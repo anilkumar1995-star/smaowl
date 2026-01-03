@@ -4,10 +4,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import AppLayout from '@/layouts/app-layout';
-import { orders } from '@/routes';
+import orders from '@/routes/orders';
 import { type BreadcrumbItem } from '@/types';
 import { Head, useForm } from '@inertiajs/react';
-import { FormEventHandler } from 'react';
+import Swal from 'sweetalert2';
+import { FormEventHandler, useState, useEffect } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -20,30 +21,47 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-interface Service {
+interface SubService {
     service: number;
     name: string;
-    type: string;
-    category: string;
+    type?: string;
+    category?: string;
     rate: string;
-    min: number;
-    max: number;
-    refill: boolean;
-    cancel: boolean;
+    min?: number;
+    max?: number;
+    refill?: boolean;
+    cancel?: boolean;
+}
+
+interface ServiceGroup {
+    id: number | string;
+    name: string;
+    services: SubService[];
 }
 
 interface CreateOrderProps {
-    services: Service[];
+    serviceGroups: ServiceGroup[];
 }
 
-export default function CreateOrder({ services }: CreateOrderProps) {
+export default function CreateOrder({ serviceGroups }: CreateOrderProps) {
     const { data, setData, post, processing, errors } = useForm({
         service: '',
         link: '',
         quantity: '',
     });
 
-    const selectedService = services.find(s => s.service.toString() === data.service);
+    const [selectedGroup, setSelectedGroup] = useState('');
+
+    // When serviceGroups prop arrives/changes, set a default selected group if none selected
+    useEffect(() => {
+        if (!selectedGroup && serviceGroups && serviceGroups.length > 0) {
+            setSelectedGroup(serviceGroups[0].id.toString());
+        }
+    }, [serviceGroups]);
+
+    const subServices = serviceGroups.find(g => g.id.toString() === selectedGroup)?.services ?? [];
+
+    const selectedService = subServices.find(s => s.service.toString() === data.service);
 
     const calculateCost = () => {
         if (!selectedService || !data.quantity) return 0;
@@ -54,7 +72,18 @@ export default function CreateOrder({ services }: CreateOrderProps) {
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
-        post(orders.store().url);
+        post(orders.store().url, {
+            onError: (errs) => {
+                // If server returned a non-field error under 'server', show Swal
+                if (errs?.server) {
+                    Swal.fire({
+                        title: 'Order failed',
+                        text: errs.server,
+                        icon: 'error',
+                    });
+                }
+            },
+        });
     };
 
     return (
@@ -71,6 +100,11 @@ export default function CreateOrder({ services }: CreateOrderProps) {
                     </div>
                 </div>
 
+                {/* Debug: show serviceGroups and selectedGroup in dev */}
+                <div className="mt-2">
+                    <pre className="text-xs text-muted-foreground">{JSON.stringify({ count: serviceGroups?.length ?? 0, selectedGroup }, null, 2)}</pre>
+                </div>
+
                 <Card>
                     <CardHeader>
                         <CardTitle>Order Details</CardTitle>
@@ -81,20 +115,42 @@ export default function CreateOrder({ services }: CreateOrderProps) {
                     <CardContent>
                         <form onSubmit={submit} className="space-y-4">
                             <div>
+                                <Label htmlFor="group">Category</Label>
+                                <Select value={selectedGroup} onValueChange={(value) => { setSelectedGroup(value); setData('service', ''); }}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select a category" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {serviceGroups && serviceGroups.length > 0 ? (
+                                            serviceGroups.map((group) => (
+                                                <SelectItem key={group.id} value={group.id.toString()}>
+                                                    {group.name}
+                                                </SelectItem>
+                                            ))
+                                        ) : (
+                                            <SelectItem value="none" disabled>
+                                                No categories
+                                            </SelectItem>
+                                        )}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div>
                                 <Label htmlFor="service">Service</Label>
                                 <Select value={data.service} onValueChange={(value) => setData('service', value)}>
                                     <SelectTrigger>
                                         <SelectValue placeholder="Select a service" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {services && services.length > 0 ? (
-                                            services.map((service) => (
+                                        {subServices && subServices.length > 0 ? (
+                                            subServices.map((service) => (
                                                 <SelectItem key={service.service} value={service.service.toString()}>
                                                     {service.name} - ₹{service.rate}/100
                                                 </SelectItem>
                                             ))
                                         ) : (
-                                            <SelectItem value="" disabled>
+                                            <SelectItem value="none" disabled>
                                                 No services available
                                             </SelectItem>
                                         )}
