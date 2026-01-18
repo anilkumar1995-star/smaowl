@@ -83,6 +83,31 @@ export default function CreateOrder({ serviceGroups }: CreateOrderProps) {
                     });
                 }
             },
+            onSuccess: (resp: any) => {
+                // If backend returned our saved app order, show that id and message
+                if (resp?.app_order) {
+                    Swal.fire({
+                        title: 'Order placed',
+                        text: `Order #${resp.app_order.id} placed successfully`,
+                        icon: 'success',
+                    }).then(() => {
+                        // reset form
+                        setData('service', '');
+                        setData('link', '');
+                        setData('quantity', '');
+                    });
+                } else {
+                    Swal.fire({
+                        title: 'Order placed',
+                        text: 'Your order was placed successfully.',
+                        icon: 'success',
+                    }).then(() => {
+                        setData('service', '');
+                        setData('link', '');
+                        setData('quantity', '');
+                    });
+                }
+            }
         });
     };
 

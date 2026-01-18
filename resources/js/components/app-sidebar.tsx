@@ -13,25 +13,27 @@ import {
 import { dashboard } from '@/routes';
 import orders from '@/routes/orders';
 import payments from '@/routes/payments';
+import adminPayments from '@/routes/admin/payments';
+import { usePage } from '@inertiajs/react';
 import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/react';
-import { BookOpen, CreditCard, Folder, LayoutGrid, ShoppingCart } from 'lucide-react';
+import { BookOpen, CreditCard, Folder, LayoutGrid, ShoppingCart, Wallet } from 'lucide-react';
 import AppLogo from './app-logo';
 
-const mainNavItems: NavItem[] = [
+const baseNavItems: NavItem[] = [
     {
         title: 'Dashboard',
         href: dashboard(),
         icon: LayoutGrid,
     },
     {
-        title: 'Payments',
-        href: payments.history().url,
+        title: 'Ledger',
+        href: payments.ledger().url,
         icon: CreditCard,
     },
     {
         title: 'Orders',
-        href: orders.create().url,
+        href: orders.index().url,
         icon: ShoppingCart,
     },
 ];
@@ -50,6 +52,27 @@ const footerNavItems: NavItem[] = [
 ];
 
 export function AppSidebar() {
+    const { props } = usePage<any>();
+    const isAdmin = props?.auth?.isAdmin;
+
+    const mainNavItems = [...baseNavItems];
+
+    // Wallet Load for regular users
+    mainNavItems.push({
+        title: 'Wallet Load',
+        href: payments.manual.create().url,
+        icon: Wallet,
+    });
+
+    // Admin-only management link
+    if (isAdmin) {
+        mainNavItems.push({
+            title: 'Manage Wallet Loads',
+            href: adminPayments.index().url,
+            icon: Wallet,
+        });
+    }
+
     return (
         <Sidebar collapsible="icon" variant="inset">
             <SidebarHeader>

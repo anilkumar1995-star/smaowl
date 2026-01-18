@@ -11,6 +11,60 @@ use Inertia\Inertia;
 
 class OrderController extends Controller
 {
+    public function index(Request $request)
+    {
+        $user = Auth::user();
+
+        $query = \App\Models\Order::where('user_id', $user->id);
+
+        // Filters
+        if ($status = $request->query('status')) {
+            $query->where('status', $status);
+        }
+
+        if ($service = $request->query('service')) {
+            $query->where('service', $service);
+        }
+
+        if ($start = $request->query('start_date')) {
+            $query->where('created_at', '>=', $start . ' 00:00:00');
+        }
+
+        if ($end = $request->query('end_date')) {
+            $query->where('created_at', '<=', $end . ' 23:59:59');
+        }
+
+        if ($min = $request->query('min_cost')) {
+            $query->where('cost', '>=', (float)$min);
+        }
+
+        if ($max = $request->query('max_cost')) {
+            $query->where('cost', '<=', (float)$max);
+        }
+
+        $orders = $query->orderByDesc('created_at')->paginate(15)->appends($request->only(['status', 'service', 'start_date', 'end_date', 'min_cost', 'max_cost']));
+
+        // transform items so only necessary fields are sent to the client
+        $orders->getCollection()->transform(function ($order) {
+            return [
+                'id' => $order->id,
+                'service' => $order->service,
+                'service_name' => $order->service_name,
+                'link' => $order->link,
+                'quantity' => $order->quantity,
+                'cost' => (string)$order->cost,
+                'external_id' => $order->external_id,
+                'status' => $order->status,
+                'created_at' => $order->created_at->toDateTimeString(),
+            ];
+        });
+
+        return Inertia::render('orders/index', [
+            'orders' => $orders,
+            'filters' => $request->only(['status', 'service', 'start_date', 'end_date', 'min_cost', 'max_cost']),
+        ]);
+    }
+
     public function create()
     {
         
@@ -220,11 +274,49 @@ class OrderController extends Controller
 
             $cost = ($service['rate'] * $request->quantity) / 100; // Assuming rate is per 100
 
-            if ($user->balance < $cost) {
-                return response()->json(['errors' => ['server' => 'Insufficient balance']], 422);
+            // Start by creating a pending order and deducting funds atomically
+            $order = null;
+
+            \DB::beginTransaction();
+            try {
+                // Deduct funds using the helper on User model (atomic DB decrement)
+                if (!$user->deductFunds((float)$cost)) {
+                    \DB::rollBack();
+                    return response()->json(['errors' => ['server' => 'Insufficient balance']], 422);
+                }
+
+                // refresh user to get updated balance
+                $user->refresh();
+
+                $order = \App\Models\Order::create([
+                    'user_id' => $user->id,
+                    'service' => (string)$request->service,
+                    'service_name' => $service['name'] ?? null,
+                    'link' => $request->link,
+                    'quantity' => (int)$request->quantity,
+                    'cost' => $cost,
+                    'status' => 'pending',
+                ]);
+
+                // Create ledger entry for debit (use fixed 2-decimal formatting)
+                \App\Models\Ledger::create([
+                    'user_id' => $user->id,
+                    'type' => 'debit',
+                    'amount' => number_format((float)$cost, 2, '.', ''),
+                    'balance' => number_format((float)$user->balance, 2, '.', ''),
+                    'reference_type' => 'order',
+                    'reference_id' => $order->id,
+                    'description' => 'Order placed',
+                ]);
+
+                \DB::commit();
+            } catch (\Exception $e) {
+                \DB::rollBack();
+                Log::error('Order create/deduct failed', ['message' => $e->getMessage()]);
+                return response()->json(['error' => 'Failed to create order'], 500);
             }
 
-            // Place the order
+            // Place the order at the external provider
             $orderResponse = Http::withoutVerifying()->timeout(10)->post('https://socialsparksmm.com/api/v2', [
                 'action' => 'add',
                 'key' => config('services.socialsparks.key'),
@@ -235,9 +327,8 @@ class OrderController extends Controller
 
             if ($orderResponse->failed()) {
                 // Log response body for debugging
-                Log::error('Order API failed', ['status' => $orderResponse->status(), 'body' => $orderResponse->body()]);
+                Log::error('Order API failed', ['status' => $orderResponse->status(), 'body' => $orderResponse->body(), 'order_id' => $order->id]);
 
-                // try to decode API error
                 $apiBody = $orderResponse->json() ?? null;
                 $apiMessage = null;
 
@@ -249,23 +340,83 @@ class OrderController extends Controller
                     $apiMessage = $orderResponse->body();
                 }
 
+                // Mark order failed and refund user
+                try {
+                    \DB::beginTransaction();
+                    $order->status = 'failed';
+                    $order->api_response = $apiBody;
+                    $order->save();
+
+                    $user->addFunds((float)$cost);
+                    $user->refresh();
+
+                    \App\Models\Ledger::create([
+                        'user_id' => $user->id,
+                        'type' => 'credit',
+                        'amount' => number_format((float)$cost, 2, '.', ''),
+                        'balance' => number_format((float)$user->balance, 2, '.', ''),
+                        'reference_type' => 'order',
+                        'reference_id' => $order->id,
+                        'description' => 'Refund after API failure',
+                    ]);
+
+                    \DB::commit();
+                } catch (\Exception $e) {
+                    \DB::rollBack();
+                    Log::error('Refund failed after API error', ['message' => $e->getMessage(), 'order_id' => $order->id]);
+                }
+
                 return response()->json(['errors' => ['server' => 'Failed to place order: ' . $apiMessage]], 422);
             }
 
             $orderData = $orderResponse->json();
 
-            if (isset($orderData['order'])) {
-                // Deduct balance
-                $user->balance -= $cost;
-                $user->save();
+            // Update order with external id and mark success
+            try {
+                $externalId = null;
+                if (isset($orderData['order'])) {
+                    // API returns an "order" key, sometimes with an id field
+                    $externalOrder = $orderData['order'];
+                    if (is_array($externalOrder)) {
+                        $externalId = $externalOrder['id'] ?? $externalOrder['order'] ?? null;
+                    } elseif (is_string($externalOrder) || is_numeric($externalOrder)) {
+                        $externalId = (string)$externalOrder;
+                    }
+                }
 
-                return response()->json(['success' => true, 'order' => $orderData]);
+                $order->external_id = $externalId;
+                $order->status = 'success';
+                $order->api_response = $orderData;
+                $order->save();
+
+                return response()->json(['success' => true, 'order' => $orderData, 'app_order' => $order]);
+            } catch (\Exception $e) {
+                Log::error('Failed to update order after API success', ['message' => $e->getMessage(), 'order_id' => $order->id]);
+                // Not critical to rollback funds here; mark failed and try refund
+                try {
+                    \DB::beginTransaction();
+                    $order->status = 'failed';
+                    $order->api_response = $orderData;
+                    $order->save();
+                    $user->addFunds((float)$cost);                    $user->refresh();
+
+                    \App\Models\Ledger::create([
+                        'user_id' => $user->id,
+                        'type' => 'credit',
+                        'amount' => number_format((float)$cost, 2, '.', ''),
+                        'balance' => number_format((float)$user->balance, 2, '.', ''),
+                        'reference_type' => 'order',
+                        'reference_id' => $order->id,
+                        'description' => 'Refund after unexpected update error',
+                    ]);
+                    \DB::commit();
+                } catch (\Exception $ee) {
+                    \DB::rollBack();
+                    Log::error('Refund failed after unexpected update error', ['message' => $ee->getMessage(), 'order_id' => $order->id]);
+                }
+
+                return response()->json(['error' => 'An error occurred while finalizing order'], 500);
             }
-
-            // Log unexpected API response
-            Log::warning('Order API returned unexpected payload', ['body' => $orderResponse->body()]);
-
-            return response()->json(['errors' => ['server' => 'Failed to place order: unexpected API response']], 422);
         } catch (\Exception $e) {
             Log::error('Order store exception', ['message' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return response()->json(['error' => 'An error occurred', 'message' => $e->getMessage()], 500);

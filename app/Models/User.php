@@ -61,22 +61,35 @@ class User extends Authenticatable
     }
 
     /**
-     * Add funds to user balance.
+     * Get user's ledger entries
      */
-    public function addFunds(float $amount): void
+    public function ledgers()
     {
-        $this->increment('balance', $amount);
+        return $this->hasMany(Ledger::class);
     }
 
     /**
-     * Deduct funds from user balance.
+     * Add funds to user balance with fixed 2-decimal arithmetic.
+     */
+    public function addFunds(float $amount): void
+    {
+        $amt = number_format((float)$amount, 2, '.', '');
+        $this->increment('balance', $amt);
+    }
+
+    /**
+     * Deduct funds from user balance using bc math for safe comparison.
      */
     public function deductFunds(float $amount): bool
     {
-        if ($this->balance >= $amount) {
-            $this->decrement('balance', $amount);
+        $amt = number_format((float)$amount, 2, '.', '');
+
+        // Ensure we compare with 2 decimal precision to avoid float rounding issues
+        if (bccomp((string)$this->balance, $amt, 2) >= 0) {
+            $this->decrement('balance', $amt);
             return true;
         }
+
         return false;
     }
 }

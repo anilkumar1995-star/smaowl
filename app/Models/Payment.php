@@ -17,6 +17,7 @@ class Payment extends Model
         'method',
         'description',
         'metadata',
+        'paid_at',
     ];
 
     protected $casts = [

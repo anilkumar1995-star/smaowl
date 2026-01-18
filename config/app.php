@@ -99,6 +99,10 @@ return [
 
     'key' => env('APP_KEY'),
 
+    // Admin emails (comma-separated) who can approve manual wallet requests
+    'admin_emails' => array_filter(array_map('trim', explode(',', env('ADMIN_EMAILS', '')))),
+
+
     'previous_keys' => [
         ...array_filter(
             explode(',', (string) env('APP_PREVIOUS_KEYS', ''))

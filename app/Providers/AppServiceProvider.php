@@ -27,12 +27,16 @@ class AppServiceProvider extends ServiceProvider
             Inertia::share([
                 'auth' => function () {
                     $user = Auth::user();
+                    $isAdmin = $user && in_array($user->email, config('app.admin_emails', []));
                     if ($user) {
-                        $totalInvested = $user->payments()->whereNotIn('status', ['failed', 'cancelled'])->sum('amount');
-                        $user->totalInvested = $totalInvested;
+                        // Compute net invested amount from ledger entries related to orders
+                        $debits = (float) $user->ledgers()->where('type', 'debit')->where('reference_type', 'order')->sum('amount');
+                        $credits = (float) $user->ledgers()->where('type', 'credit')->where('reference_type', 'order')->sum('amount');
+                        $user->totalInvested = round($debits - $credits, 2);
                     }
                     return [
                         'user' => $user,
+                        'isAdmin' => $isAdmin,
                     ];
                 },
             ]);

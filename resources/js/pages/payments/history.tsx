@@ -2,11 +2,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
 import AppLayout from '@/layouts/app-layout';
 import { dashboard } from '@/routes';
 import payments from '@/routes/payments';
 import { type BreadcrumbItem } from '@/types';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -37,13 +38,20 @@ interface PaymentsHistoryProps {
         last_page: number;
         per_page: number;
         total: number;
+        prev_page_url?: string | null;
+        next_page_url?: string | null;
+        path?: string;
     };
     totalInvested: number;
     availableBalance: number;
     graphData: { month: string; total: number }[];
+    filters?: Record<string, any>;
 }
 
 export default function PaymentsHistory({ payments, totalInvested, availableBalance, graphData }: PaymentsHistoryProps) {
+    const { props } = usePage<any>();
+    const isAdmin = props?.auth?.isAdmin;
+
     const getStatusBadge = (status: string) => {
         const variants = {
             captured: 'default',
@@ -87,12 +95,57 @@ export default function PaymentsHistory({ payments, totalInvested, availableBala
                             View all your payment transactions
                         </p>
                     </div>
-                    <Button asChild>
-                        <Link href='/payments/add-funds'>
-                            Add Funds
-                        </Link>
-                    </Button>
+                    <div className="flex gap-2">
+                        {/* Hide financial actions for admin users */}
+                        {(!props?.auth?.isAdmin) && (
+                            <>
+                                <Button asChild>
+                                    <Link href='/payments/add-funds'>
+                                        Add Funds
+                                    </Link>
+                                </Button>
+
+                                <Button asChild variant="outline">
+                                    <Link href="/payments/manual">Manual Load</Link>
+                                </Button>
+                            </>
+                        )}
+                    </div>
                 </div>
+
+                {/* Filters */}
+                <form method="get" className="flex gap-2 items-end my-2 flex-wrap">
+                    <select name="status" defaultValue={typeof filters !== 'undefined' && filters.status ? String(filters.status) : ''} className="border-input rounded-md px-2 py-1 text-sm w-36">
+                        <option value="">All</option>
+                        <option value="pending">Pending</option>
+                        <option value="captured">Captured</option>
+                        <option value="failed">Failed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+
+                    <div className="flex gap-2">
+                        <div>
+                            <label className="text-xs text-muted-foreground">From</label>
+                            <Input type="date" name="start_date" defaultValue={typeof filters !== 'undefined' ? (filters.start_date ?? '') : ''} />
+                        </div>
+                        <div>
+                            <label className="text-xs text-muted-foreground">To</label>
+                            <Input type="date" name="end_date" defaultValue={typeof filters !== 'undefined' ? (filters.end_date ?? '') : ''} />
+                        </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                        <Input type="number" step="0.01" name="min_amount" placeholder="Min amount" defaultValue={typeof filters !== 'undefined' ? (filters.min_amount ?? '') : ''} />
+                        <Input type="number" step="0.01" name="max_amount" placeholder="Max amount" defaultValue={typeof filters !== 'undefined' ? (filters.max_amount ?? '') : ''} />
+                    </div>
+
+                    <div className="flex gap-2">
+                        <Button type="submit">Apply</Button>
+                        <Button asChild variant="outline">
+                            <Link href={payments?.path || '/payments/history'}>Clear</Link>
+                        </Button>
+                    </div>
+                </form>
 
                 <Card>
                     <CardHeader>
@@ -127,6 +180,7 @@ export default function PaymentsHistory({ payments, totalInvested, availableBala
                                 <TableRow>
                                     <TableHead>Date</TableHead>
                                     <TableHead>Amount</TableHead>
+                                    <TableHead>Type</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead>Payment ID</TableHead>
                                 </TableRow>
@@ -136,6 +190,10 @@ export default function PaymentsHistory({ payments, totalInvested, availableBala
                                     <TableRow key={payment.id}>
                                         <TableCell>
                                             {new Date(payment.created_at).toLocaleString()}
+                                        </TableCell>
+                                        <TableCell>
+                                            {/* Type: Manual vs Online */}
+                                            {payment.metadata && payment.metadata.manual_request ? 'Manual' : 'Online'}
                                         </TableCell>
                                         <TableCell>
                                             ₹{parseFloat(payment.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
