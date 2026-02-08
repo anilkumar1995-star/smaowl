@@ -23,6 +23,11 @@ Route::middleware('auth')->group(function () {
         return Inertia::render('settings/appearance');
     })->name('appearance.edit');
 
+    // Developer settings (feature-flagged) — accessible to any authenticated user
+    Route::get('settings/developer', function () {
+        return Inertia::render('settings/developer');
+    })->name('settings.developer');
+
     Route::get('settings/two-factor', [TwoFactorAuthenticationController::class, 'show'])
         ->name('two-factor.show');
 });

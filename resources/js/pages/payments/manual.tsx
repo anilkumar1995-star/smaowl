@@ -30,14 +30,23 @@ export default function ManualLoad() {
                 body: JSON.stringify({ amount, note }),
             });
 
-            const data = await res.json();
-            if (res.ok) {
-                setMessage('Request submitted — an admin will review and approve it.');
-                setAmount('');
-                setNote('');
+            let messageText = 'Failed to submit request';
+            const contentType = res.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                const data = await res.json();
+                if (res.ok) {
+                    messageText = 'Request submitted — an admin will review and approve it.';
+                    setAmount('');
+                    setNote('');
+                } else {
+                    messageText = data.error || `${res.status} ${res.statusText}`;
+                }
             } else {
-                setMessage(data.error || 'Failed to submit request');
+                const text = await res.text();
+                messageText = text || `${res.status} ${res.statusText}`;
             }
+
+            setMessage(messageText);
         } catch (e) {
             setMessage('Failed to submit request');
         } finally {

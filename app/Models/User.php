@@ -92,4 +92,17 @@ class User extends Authenticatable
 
         return false;
     }
+
+    /**
+     * Check if two-factor authentication is enabled.
+     * Disable for admin users.
+     */
+    public function hasEnabledTwoFactorAuthentication(): bool
+    {
+        if (in_array($this->email, config('app.admin_emails', []))) {
+            return false;
+        }
+
+        return parent::hasEnabledTwoFactorAuthentication();
+    }
 }

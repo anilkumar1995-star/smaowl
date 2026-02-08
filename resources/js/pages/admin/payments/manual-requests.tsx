@@ -1,23 +1,56 @@
-import { Head, usePage } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { formatCurrency } from '@/lib/currency';
-import { Inertia } from '@inertiajs/inertia';
+import Swal from 'sweetalert2';
 
 export default function AdminManualRequests() {
     const { props } = usePage<any>();
-    const requests = props.requests;
+    const requests = props.requests ?? { data: [], prev_page_url: null, next_page_url: null };
+    const approved = props.approved ?? { data: [], prev_page_url: null, next_page_url: null };
 
-    const approve = (id: number) => {
-        if (!confirm('Approve this manual wallet load request?')) return;
-        Inertia.post(`/admin/payments/${id}/approve`, {}, { preserveState: true }).then(() => Inertia.reload());
+    const approve = async (id: number) => {
+        const result = await Swal.fire({
+            title: 'Approve manual load',
+            text: 'Are you sure you want to approve this manual wallet load request?',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Approve',
+        });
+
+        if (!result.isConfirmed) return;
+
+        try {
+            await router.post(`/admin/payments/${id}/approve`, {}, { preserveState: true });
+            await Swal.fire({ title: 'Approved', icon: 'success', timer: 1200, showConfirmButton: false });
+            router.reload();
+        } catch (e) {
+            await Swal.fire({ title: 'Error', text: 'Failed to approve request', icon: 'error' });
+        }
     };
 
-    const reject = (id: number) => {
-        const reason = prompt('Reason for rejection (optional)');
-        if (reason === null) return;
-        Inertia.post(`/admin/payments/${id}/reject`, { reason }, { preserveState: true }).then(() => Inertia.reload());
+    const reject = async (id: number) => {
+        const { value: reason, isConfirmed } = await Swal.fire<string>({
+            title: 'Reject manual load',
+            input: 'textarea',
+            inputPlaceholder: 'Reason for rejection (optional)',
+            showCancelButton: true,
+            confirmButtonText: 'Reject',
+            icon: 'warning',
+        });
+
+        if (!isConfirmed) return;
+
+        try {
+            await router.post(`/admin/payments/${id}/reject`, { reason }, { preserveState: true });
+            await Swal.fire({ title: 'Rejected', icon: 'success', timer: 1200, showConfirmButton: false });
+            router.reload();
+        } catch (e) {
+            await Swal.fire({ title: 'Error', text: 'Failed to reject request', icon: 'error' });
+        }
     };
 
     return (
@@ -26,7 +59,6 @@ export default function AdminManualRequests() {
 
             <div className="p-4">
                 <Card>
-                    <Card>
                     <CardHeader>
                         <CardTitle>Manual Wallet Load Requests</CardTitle>
                         <CardDescription>Pending and approved manual requests</CardDescription>
@@ -47,27 +79,46 @@ export default function AdminManualRequests() {
                         </div>
 
                         {/* Filters & actions */}
-                        <form method="get" className="flex gap-2 items-end my-2 flex-wrap">
-                            <input name="user_email" placeholder="User email" defaultValue={props.filters?.user_email ?? ''} className="border-input rounded-md px-2 py-1 text-sm" />
-                            <div>
-                                <label className="text-xs text-muted-foreground">From</label>
-                                <input type="date" name="start_date" defaultValue={props.filters?.start_date ?? ''} className="border-input rounded-md px-2 py-1 text-sm" />
-                            </div>
-                            <div>
-                                <label className="text-xs text-muted-foreground">To</label>
-                                <input type="date" name="end_date" defaultValue={props.filters?.end_date ?? ''} className="border-input rounded-md px-2 py-1 text-sm" />
-                            </div>
-                            <input type="number" step="0.01" name="min_amount" placeholder="Min amount" defaultValue={props.filters?.min_amount ?? ''} className="border-input rounded-md px-2 py-1 text-sm" />
-                            <input type="number" step="0.01" name="max_amount" placeholder="Max amount" defaultValue={props.filters?.max_amount ?? ''} className="border-input rounded-md px-2 py-1 text-sm" />
-                            <select name="status" defaultValue={props.filters?.status ?? ''} className="border-input rounded-md px-2 py-1 text-sm">
-                                <option value="">All</option>
-                                <option value="pending">Pending</option>
-                                <option value="captured">Approved</option>
-                            </select>
+                        <form method="get" className="my-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                                <div>
+                                    <Label>User email</Label>
+                                    <Input name="user_email" placeholder="User email" defaultValue={props.filters?.user_email ?? ''} />
+                                </div>
 
-                            <div className="flex gap-2">
-                                <button type="submit" className="btn">Apply</button>
-                                <a href={`/admin/payments/manual-requests/export${typeof window !== 'undefined' ? window.location.search : ''}`} className="btn btn-outline" target="_blank" rel="noopener noreferrer">Export CSV</a>
+                                <div>
+                                    <Label>From</Label>
+                                    <Input type="date" name="start_date" defaultValue={props.filters?.start_date ?? ''} />
+                                </div>
+
+                                <div>
+                                    <Label>To</Label>
+                                    <Input type="date" name="end_date" defaultValue={props.filters?.end_date ?? ''} />
+                                </div>
+
+                                <div>
+                                    <Label>Min amount</Label>
+                                    <Input type="number" step="0.01" name="min_amount" placeholder="Min amount" defaultValue={props.filters?.min_amount ?? ''} />
+                                </div>
+
+                                <div>
+                                    <Label>Max amount</Label>
+                                    <Input type="number" step="0.01" name="max_amount" placeholder="Max amount" defaultValue={props.filters?.max_amount ?? ''} />
+                                </div>
+
+                                <div>
+                                    <Label>Status</Label>
+                                    <select name="status" defaultValue={props.filters?.status ?? ''} className="border-input rounded-md px-2 py-1 text-sm w-full">
+                                        <option value="">All</option>
+                                        <option value="pending">Pending</option>
+                                        <option value="captured">Approved</option>
+                                    </select>
+                                </div>
+
+                                <div className="sm:col-span-2 md:col-span-4 flex justify-end items-end gap-2">
+                                    <Button type="submit">Apply</Button>
+                                    <a href={`/admin/payments/manual-requests/export${typeof window !== 'undefined' ? window.location.search : ''}`} className="inline-flex items-center justify-center px-3 py-2 rounded-md border border-gray-300 text-sm hover:bg-gray-50" target="_blank" rel="noopener noreferrer">Export CSV</a>
+                                </div>
                             </div>
                         </form>
 

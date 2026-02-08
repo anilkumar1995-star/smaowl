@@ -8,15 +8,21 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
+use App\Models\Service;
 
 class OrderController extends Controller
 {
     public function index(Request $request)
     {
         $user = Auth::user();
-
-        $query = \App\Models\Order::where('user_id', $user->id);
-
+        $isAdmin = in_array($user->email, config('app.admin_emails', []));
+ 
+        if ($isAdmin) {
+            $query = \App\Models\Order::with('user:id,name,email');
+        } else {
+            $query = \App\Models\Order::where('user_id', $user->id);
+        }
+      
         // Filters
         if ($status = $request->query('status')) {
             $query->where('status', $status);
@@ -42,11 +48,11 @@ class OrderController extends Controller
             $query->where('cost', '<=', (float)$max);
         }
 
-        $orders = $query->orderByDesc('created_at')->paginate(15)->appends($request->only(['status', 'service', 'start_date', 'end_date', 'min_cost', 'max_cost']));
+        $orders = $query->orderByDesc('id')->paginate(10)->appends($request->only(['status', 'service', 'start_date', 'end_date', 'min_cost', 'max_cost']));
 
         // transform items so only necessary fields are sent to the client
-        $orders->getCollection()->transform(function ($order) {
-            return [
+        $orders->getCollection()->transform(function ($order) use ($isAdmin) {
+            $data = [
                 'id' => $order->id,
                 'service' => $order->service,
                 'service_name' => $order->service_name,
@@ -57,6 +63,16 @@ class OrderController extends Controller
                 'status' => $order->status,
                 'created_at' => $order->created_at->toDateTimeString(),
             ];
+
+            if ($isAdmin) {
+                $data['user'] = [
+                    'id' => $order->user->id,
+                    'name' => $order->user->name,
+                    'email' => $order->user->email,
+                ];
+            }
+
+            return $data;
         });
 
         return Inertia::render('orders/index', [
@@ -65,135 +81,169 @@ class OrderController extends Controller
         ]);
     }
 
+    /**
+     * Check status for a given order (app id or external id). This calls the external provider
+     * status endpoint and will refund the user if the provider reports a partial or failed fill.
+     *
+     * Query param: order (app order id or external provider id)
+     */
+    public function status(Request $request): JsonResponse
+    {
+        $request->validate([
+            'order' => 'required',
+        ]);
+
+        $orderIdentifier = $request->query('order');
+        $action = strtolower($request->query('action', 'status'));
+
+        // Only allow known actions to be forwarded to provider
+        $allowedActions = ['status', 'balance'];
+        if (!in_array($action, $allowedActions, true)) {
+            return response()->json(['error' => 'Unsupported action'], 400);
+        }
+
+        // Find by app id or external_id
+        $order = \App\Models\Order::where('id', $orderIdentifier)
+            ->orWhere('external_id', $orderIdentifier)
+            ->first();
+
+        if (!$order) {
+            return response()->json(['error' => 'Order not found'], 404);
+        }
+
+        $externalId = $order->external_id;
+        if (empty($externalId)) {
+            return response()->json(['status' => $order->status, 'message' => 'No external id available for this order'], 200);
+        }
+
+        $apiKey = config('services.socialsparks.key');
+        if (empty($apiKey)) {
+            return response()->json(['error' => 'Payment provider not configured.'], 500);
+        }
+
+        try {
+            $resp = Http::withoutVerifying()->timeout(10)->get('https://socialsparksmm.com/api/v2', [
+                'action' => $action,
+                'order' => $externalId,
+                'key' => $apiKey,
+            ]);
+
+            if ($resp->failed()) {
+                Log::error('Status API failed', ['status' => $resp->status(), 'body' => $resp->body(), 'order' => $order->id]);
+                return response()->json(['error' => 'Failed to query provider status'], 502);
+            }
+
+            $data = $resp->json();
+
+            // Example provider response:
+            // {
+            //   "charge": "0.27819",
+            //   "start_count": "3572",
+            //   "status": "Partial",
+            //   "remains": "157",
+            //   "currency": "USD"
+            // }
+
+            // Persist API response to order
+            $order->api_response = $data;
+
+            $providerStatus = isset($data['status']) ? strtolower($data['status']) : null;
+
+            // If provider reports partial or failed, compute refund and credit user
+            if (in_array($providerStatus, ['partial', 'failed', 'cancelled', 'canceled'])) {
+                $remains = isset($data['remains']) ? (int)$data['remains'] : null;
+                $originalQty = (int)$order->quantity;
+                if ($remains !== null && $originalQty > 0) {
+                    $delivered = max(0, $originalQty - $remains);
+                    $deliveredRatio = $delivered / $originalQty;
+
+                    $chargedToUser = (float)$order->cost * $deliveredRatio;
+                    $refundAmount = max(0, (float)$order->cost - $chargedToUser);
+
+                    // Only refund if we haven't refunded before and refund amount > 0.009 (avoid tiny cents)
+                    if ($refundAmount > 0.009 && $order->status !== 'refunded') {
+                        try {
+                            \DB::beginTransaction();
+
+                            $user = $order->user()->lockForUpdate()->first();
+                            if ($user) {
+                                $user->addFunds((float)$refundAmount);
+                                $user->refresh();
+
+                                \App\Models\Ledger::create([
+                                    'user_id' => $user->id,
+                                    'type' => 'credit',
+                                    'amount' => number_format((float)$refundAmount, 2, '.', ''),
+                                    'balance' => number_format((float)$user->balance, 2, '.', ''),
+                                    'company_balance' => number_format((float) \App\Models\User::sum('balance'), 2, '.', ''),
+                                    'reference_type' => 'order',
+                                    'reference_id' => $order->id,
+                                    'description' => 'Refund for provider partial/failed order',
+                                ]);
+                            }
+
+                            $order->status = 'refunded';
+                            $order->save();
+
+                            \DB::commit();
+                        } catch (\Exception $e) {
+                            \DB::rollBack();
+                            Log::error('Refund processing failed', ['message' => $e->getMessage(), 'order' => $order->id]);
+                        }
+                    }
+                }
+            } else {
+                // map other provider statuses to our app statuses
+                    if (in_array($providerStatus, ['pending', 'in progress', 'processing'], true)) {
+                        $order->status = 'pending';
+                    } elseif (in_array($providerStatus, ['completed', 'success'], true)) {
+                        $order->status = 'success';
+                    }
+                $order->save();
+            }
+
+            return response()->json(['ok' => true, 'provider' => $data, 'order' => $order]);
+        } catch (\Exception $e) {
+            Log::error('Status check exception', ['message' => $e->getMessage(), 'order' => $order->id]);
+            return response()->json(['error' => 'Exception occurred while checking status'], 500);
+        }
+    }
+
     public function create()
     {
-        
+        // Use local DB `services` table as the source of truth for the ordering UI.
         try {
-            $response = Http::withoutVerifying()->timeout(10)->get('https://socialsparksmm.com/api/services/page', [
-                'v' => '3',
-                'full' => 'false',
-            ]);
- 
-            if ($response->failed()) {
-                $serviceGroups = [];
-            } else {
-                $payload = $response->json() ?? [];
-              
-                // Debug: log payload shape (keys and counts) to laravel.log
-                try {
-                    Log::info('services API payload keys', [
-                        'is_array' => is_array($payload),
-                        'top_keys' => is_array($payload) ? array_keys($payload) : null,
-                        'services_count' => is_array($payload) && isset($payload['services']) && is_array($payload['services']) ? count($payload['services']) : null,
-                        'data_keys' => isset($payload['data']) && is_array($payload['data']) ? array_keys($payload['data']) : null,
-                    ]);
-                } catch (\Throwable $e) {
-                    // swallow logging errors
-                }
+            $services = Service::orderBy('category')->get();
 
-                $serviceGroups = [];
+            $serviceGroups = [];
 
-                if (isset($payload['data']['categories']) && is_array($payload['data']['categories'])) {
-                    foreach ($payload['data']['categories'] as $cat) {
-                        $services = collect($cat['services'] ?? [])->map(function ($s) use ($cat) {
-                            return [
-                                'service' => $s['service'] ?? $s['id'] ?? null,
-                                'name' => $s['name'] ?? ($s['service'] ?? 'Unknown'),
-                                'rate' => (string) ($s['rate'] ?? $s['price'] ?? 0),
-                                'min' => $s['min'] ?? 1,
-                                'max' => $s['max'] ?? 1000,
-                                'refill' => $s['refill'] ?? false,
-                                'cancel' => $s['cancel'] ?? false,
-                                'category' => $cat['name'] ?? $cat['category'] ?? null,
-                            ];
-                        })->filter(function ($s) {
-                            return !is_null($s['service']);
-                        })->values()->toArray();
+            $grouped = $services->groupBy(function ($s) {
+                return $s->category ?? 'Other';
+            });
 
-                        $serviceGroups[] = [
-                            'id' => $cat['id'] ?? $cat['name'] ?? null,
-                            'name' => $cat['name'] ?? $cat['category'] ?? 'Other',
-                            'services' => $services,
-                        ];
-                    }
-                } elseif (isset($payload['services']) && is_array($payload['services'])) {
-                    // Detect whether payload['services'] are actual services or categories containing services
-                    $first = $payload['services'][0] ?? null;
-
-                    if (is_array($first) && isset($first['services'])) {
-                        // payload['services'] is an array of categories
-                        foreach ($payload['services'] as $cat) {
-                            $services = collect($cat['services'] ?? [])->map(function ($s) use ($cat) {
-                                return [
-                                    'service' => $s['service'] ?? $s['id'] ?? null,
-                                    'name' => $s['name'] ?? ($s['service'] ?? 'Unknown'),
-                                    'rate' => (string) ($s['rate'] ?? $s['price'] ?? 0),
-                                    'min' => $s['min'] ?? 1,
-                                    'max' => $s['max'] ?? 1000,
-                                    'refill' => $s['refill'] ?? false,
-                                    'cancel' => $s['cancel'] ?? false,
-                                    'category' => $cat['name'] ?? $cat['category'] ?? null,
-                                ];
-                            })->filter(function ($s) {
-                                return !is_null($s['service']);
-                            })->values()->toArray();
-
-                            $serviceGroups[] = [
-                                'id' => $cat['id'] ?? $cat['name'] ?? null,
-                                'name' => $cat['name'] ?? $cat['category'] ?? 'Other',
-                                'services' => $services,
-                            ];
-                        }
-                    } else {
-                        // payload['services'] is a flat list of services
-                        $services = collect($payload['services'])->map(function ($s) {
-                            return [
-                                'service' => $s['service'] ?? $s['id'] ?? null,
-                                'name' => $s['name'] ?? ($s['service'] ?? 'Unknown'),
-                                'rate' => (string) ($s['rate'] ?? $s['price'] ?? 0),
-                                'min' => $s['min'] ?? 1,
-                                'max' => $s['max'] ?? 1000,
-                                'refill' => $s['refill'] ?? false,
-                                'cancel' => $s['cancel'] ?? false,
-                                'category' => $s['category'] ?? null,
-                            ];
-                        })->filter(function ($s) {
-                            return !is_null($s['service']);
-                        })->values()->toArray();
-
-                        $serviceGroups[] = [
-                            'id' => 'all',
-                            'name' => 'All Services',
-                            'services' => $services,
-                        ];
-                    }
-                } elseif (is_array($payload) && count($payload) && isset($payload[0]['service'])) {
-                    $services = collect($payload)->map(function ($s) {
-                        return [
-                            'service' => $s['service'] ?? $s['id'] ?? null,
-                            'name' => $s['name'] ?? ($s['service'] ?? 'Unknown'),
-                            'rate' => (string) ($s['rate'] ?? $s['price'] ?? 0),
-                            'min' => $s['min'] ?? 1,
-                            'max' => $s['max'] ?? 1000,
-                            'refill' => $s['refill'] ?? false,
-                            'cancel' => $s['cancel'] ?? false,
-                            'category' => $s['category'] ?? null,
-                        ];
-                    })->filter(function ($s) {
-                        return !is_null($s['service']);
-                    })->values()->toArray();
-
-                    $serviceGroups[] = [
-                        'id' => 'all',
-                        'name' => 'All Services',
-                        'services' => $services,
+            foreach ($grouped as $category => $items) {
+                $servicesArr = $items->map(function ($s) use ($category) {
+                    return [
+                        // prefer the external id if present so the downstream API receives the expected id
+                        'service' => $s->external_id ?? $s->id,
+                        'name' => $s->name,
+                        'rate' => (string) ($s->rate ?? 0),
+                        'min' => $s->min ?? 1,
+                        'max' => $s->max ?? 1000,
+                        'refill' => (bool) ($s->refill ?? false),
+                        'cancel' => (bool) ($s->cancel ?? false),
+                        'category' => $category,
                     ];
-                } else {
-                    $serviceGroups = [];
-                }
+                })->values()->toArray();
+
+                $serviceGroups[] = [
+                    'id' => $category,
+                    'name' => $category,
+                    'services' => $servicesArr,
+                ];
             }
         } catch (\Exception $e) {
-            dd($e);
+            Log::error('Failed to load services from DB', ['message' => $e->getMessage()]);
             $serviceGroups = [];
         }
 
@@ -219,60 +269,16 @@ class OrderController extends Controller
         }
 
         try {
-            $serviceResponse = Http::withoutVerifying()->timeout(10)->get('https://socialsparksmm.com/api/services/page', [
-                'v' => '3',
-                'full' => 'false',
-            ]);
-
-            if ($serviceResponse->failed()) {
-                return response()->json(['error' => 'Unable to fetch services'], 500);
-            }
-
-            $payload = $serviceResponse->json() ?? [];
-
-            // flatten services from groups
-            $flat = collect([]);
-
-            if (isset($payload['data']['categories']) && is_array($payload['data']['categories'])) {
-                foreach ($payload['data']['categories'] as $cat) {
-                    $flat = $flat->merge(collect($cat['services'] ?? []));
-                }
-            } elseif (isset($payload['services']) && is_array($payload['services'])) {
-                // payload['services'] might be categories. detect and flatten accordingly
-                $first = $payload['services'][0] ?? null;
-                if (is_array($first) && isset($first['services'])) {
-                    foreach ($payload['services'] as $cat) {
-                        $flat = $flat->merge(collect($cat['services'] ?? []));
-                    }
-                } else {
-                    $flat = collect($payload['services']);
-                }
-            } elseif (is_array($payload) && count($payload) && isset($payload[0]['service'])) {
-                $flat = collect($payload);
-            }
-
-            $services = $flat->map(function ($s) {
-                return [
-                    'service' => $s['service'] ?? $s['id'] ?? null,
-                    'name' => $s['name'] ?? ($s['service'] ?? 'Unknown'),
-                    'rate' => (string) ($s['rate'] ?? $s['price'] ?? 0),
-                    'min' => $s['min'] ?? 1,
-                    'max' => $s['max'] ?? 1000,
-                    'refill' => $s['refill'] ?? false,
-                    'cancel' => $s['cancel'] ?? false,
-                    'category' => $s['category'] ?? null,
-                ];
-            })->filter(function ($s) {
-                return !is_null($s['service']);
-            })->values();
-
-            $service = $services->firstWhere('service', $request->service);
+            // Look up the service in our DB by external id or local id
+            $service = Service::where('external_id', $request->service)
+                ->orWhere('id', $request->service)
+                ->first();
 
             if (!$service) {
                 return response()->json(['error' => 'Service not found'], 404);
             }
 
-            $cost = ($service['rate'] * $request->quantity) / 100; // Assuming rate is per 100
+            $cost = ((float) $service->rate * (int) $request->quantity) / 100; // preserve previous rate-per-100 assumption
 
             // Start by creating a pending order and deducting funds atomically
             $order = null;
@@ -304,6 +310,7 @@ class OrderController extends Controller
                     'type' => 'debit',
                     'amount' => number_format((float)$cost, 2, '.', ''),
                     'balance' => number_format((float)$user->balance, 2, '.', ''),
+                    'company_balance' => number_format((float) \App\Models\User::sum('balance'), 2, '.', ''),
                     'reference_type' => 'order',
                     'reference_id' => $order->id,
                     'description' => 'Order placed',
@@ -355,6 +362,7 @@ class OrderController extends Controller
                         'type' => 'credit',
                         'amount' => number_format((float)$cost, 2, '.', ''),
                         'balance' => number_format((float)$user->balance, 2, '.', ''),
+                        'company_balance' => number_format((float) \App\Models\User::sum('balance'), 2, '.', ''),
                         'reference_type' => 'order',
                         'reference_id' => $order->id,
                         'description' => 'Refund after API failure',
@@ -385,7 +393,7 @@ class OrderController extends Controller
                 }
 
                 $order->external_id = $externalId;
-                $order->status = 'success';
+                $order->status = 'pending';
                 $order->api_response = $orderData;
                 $order->save();
 
@@ -405,6 +413,7 @@ class OrderController extends Controller
                         'type' => 'credit',
                         'amount' => number_format((float)$cost, 2, '.', ''),
                         'balance' => number_format((float)$user->balance, 2, '.', ''),
+                        'company_balance' => number_format((float) \App\Models\User::sum('balance'), 2, '.', ''),
                         'reference_type' => 'order',
                         'reference_id' => $order->id,
                         'description' => 'Refund after unexpected update error',

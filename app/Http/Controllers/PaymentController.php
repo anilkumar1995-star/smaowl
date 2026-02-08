@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use App\Models\Ledger;
+use App\Models\User;
 use Razorpay\Api\Api;
 
 class PaymentController extends Controller
@@ -130,6 +131,7 @@ class PaymentController extends Controller
                     'type' => 'credit',
                     'amount' => number_format((float)$payment->amount, 2, '.', ''),
                     'balance' => number_format((float)$payment->user->balance, 2, '.', ''),
+                    'company_balance' => number_format((float) \App\Models\User::sum('balance'), 2, '.', ''),
                     'reference_type' => 'payment',
                     'reference_id' => $payment->id,
                     'description' => 'Funds added via Razorpay',
@@ -232,9 +234,14 @@ class PaymentController extends Controller
     public function history(Request $request)
     {
         $user = Auth::user();
+        $isAdmin = in_array($user->email, config('app.admin_emails', []));
 
         // Apply filters
-        $paymentsQuery = $user->payments();
+        if ($isAdmin) {
+            $paymentsQuery = Payment::with('user');
+        } else {
+            $paymentsQuery = $user->payments();
+        }
 
         if ($status = $request->query('status')) {
             $paymentsQuery->where('status', $status);
@@ -256,12 +263,22 @@ class PaymentController extends Controller
             $paymentsQuery->where('amount', '<=', (float)$max);
         }
 
-        $payments = $paymentsQuery->orderBy('created_at', 'desc')->paginate(20)->appends($request->only(['status', 'start_date', 'end_date', 'min_amount', 'max_amount']));
+        // Allow admin to filter by user email
+        if ($isAdmin && $userEmail = $request->query('user_email')) {
+            $paymentsQuery->whereHas('user', function ($q) use ($userEmail) {
+                $q->where('email', 'like', '%' . $userEmail . '%');
+            });
+        }
+
+        $payments = $paymentsQuery->orderBy('created_at', 'desc')
+            ->paginate(20)
+            ->appends($request->only(['status', 'start_date', 'end_date', 'min_amount', 'max_amount', 'user_email']));
 
         // Net invested amount = sum of order debits minus any order credits (refunds)
         $debits = (float) $user->ledgers()->where('type', 'debit')->where('reference_type', 'order')->sum('amount');
         $credits = (float) $user->ledgers()->where('type', 'credit')->where('reference_type', 'order')->sum('amount');
         $totalInvested = round($debits - $credits, 2);
+        // (No per-ledger company balance computation is needed on the payments history page.)
 
         // Prepare data for graph: payments by month (unfiltered)
         $graphData = $user->payments()
@@ -282,7 +299,8 @@ class PaymentController extends Controller
             'totalInvested' => $totalInvested,
             'availableBalance' => $user->balance,
             'graphData' => $graphData,
-            'filters' => $request->only(['status', 'start_date', 'end_date', 'min_amount', 'max_amount']),
+            'filters' => $request->only(['status', 'start_date', 'end_date', 'min_amount', 'max_amount', 'user_email']),
+            'isAdmin' => $isAdmin,
         ]);
     }
 
@@ -292,8 +310,13 @@ class PaymentController extends Controller
     public function ledger(Request $request)
     {
         $user = Auth::user();
+        $isAdmin = in_array($user->email, config('app.admin_emails', []));
 
-        $ledgersQuery = $user->ledgers();
+        if ($isAdmin) {
+            $ledgersQuery = Ledger::with('user:id,name,email');
+        } else {
+            $ledgersQuery = $user->ledgers();
+        }
 
         if ($type = $request->query('type')) {
             $ledgersQuery->where('type', $type);
@@ -319,13 +342,111 @@ class PaymentController extends Controller
             $ledgersQuery->where('amount', '<=', (float)$max);
         }
 
-        $ledgers = $ledgersQuery->orderByDesc('created_at')->paginate(20)->appends($request->only(['type', 'reference_type', 'start_date', 'end_date', 'min_amount', 'max_amount']));
+        $ledgers = $ledgersQuery->orderByDesc('id')->paginate(20)->appends($request->only(['type', 'reference_type', 'start_date', 'end_date', 'min_amount', 'max_amount']));
 
-        // send current balance as closing balance
+        // For admin, compute company-wide balance (sum of all users)
+        $closingBalance = $isAdmin ? null : $user->balance;
+        $companyBalance = $isAdmin ? (float) User::sum('balance') : null;
+
         return Inertia::render('payments/ledger', [
             'ledgers' => $ledgers,
-            'closingBalance' => $user->balance,
+            'closingBalance' => $closingBalance,
+            'companyBalance' => $companyBalance,
+            'isAdmin' => $isAdmin,
             'filters' => $request->only(['type', 'reference_type', 'start_date', 'end_date', 'min_amount', 'max_amount']),
         ]);
+    }
+
+    /**
+     * Admin: update payment status (capture or fail)
+     */
+    public function adminUpdateStatus(Request $request, Payment $payment)
+    {
+        $user = Auth::user();
+        $isAdmin = in_array($user->email, config('app.admin_emails', []));
+        if (!$isAdmin) {
+            abort(403);
+        }
+
+        $request->validate([
+            'status' => 'required|string|in:captured,failed',
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        $status = $request->input('status');
+
+        try {
+            if ($status === 'captured') {
+                if ($payment->status === 'captured') {
+                    return response()->json(['error' => 'Payment already captured'], 422);
+                }
+
+                DB::transaction(function () use ($payment) {
+                    $payment->update(['status' => 'captured', 'paid_at' => now()]);
+                    $payment->user->addFunds((float)$payment->amount);
+                    $payment->user->refresh();
+
+                    Ledger::create([
+                        'user_id' => $payment->user->id,
+                        'type' => 'credit',
+                        'amount' => number_format((float)$payment->amount, 2, '.', ''),
+                        'balance' => number_format((float)$payment->user->balance, 2, '.', ''),
+                        'company_balance' => number_format((float) \App\Models\User::sum('balance'), 2, '.', ''),
+                        'reference_type' => 'payment',
+                        'reference_id' => $payment->id,
+                        'description' => 'Payment captured by admin',
+                    ]);
+                });
+
+                return response()->json(['success' => true, 'status' => 'captured']);
+            }
+
+            if ($status === 'failed') {
+                if ($payment->status === 'failed') {
+                    return response()->json(['error' => 'Payment already failed'], 422);
+                }
+
+                $payment->update(['status' => 'failed', 'metadata' => array_merge((array)$payment->metadata, ['rejected_by' => $user->id, 'rejected_reason' => $request->input('reason')])]);
+
+                return response()->json(['success' => true, 'status' => 'failed']);
+            }
+
+            return response()->json(['error' => 'Unknown status'], 400);
+        } catch (\Exception $e) {
+            Log::error('Admin update payment status failed', ['message' => $e->getMessage(), 'payment_id' => $payment->id]);
+            return response()->json(['error' => 'Failed to update payment status'], 500);
+        }
+    }
+
+    /**
+     * Admin: check remote payment status from Razorpay
+     */
+    public function adminCheckStatus(Request $request, Payment $payment)
+    {
+        $user = Auth::user();
+        $isAdmin = in_array($user->email, config('app.admin_emails', []));
+        if (!$isAdmin) {
+            abort(403);
+        }
+
+        try {
+            $result = null;
+
+            if ($payment->razorpay_payment_id) {
+                $remote = $this->razorpay->payment->fetch($payment->razorpay_payment_id);
+                $result = is_object($remote) ? $remote->toArray() : $remote;
+            } elseif ($payment->razorpay_order_id) {
+                // Fetch payments associated with the order
+                $remoteList = $this->razorpay->payment->all(['order_id' => $payment->razorpay_order_id]);
+                $result = $remoteList['items'] ?? $remoteList;
+            } else {
+                return response()->json(['error' => 'No remote identifiers found for this payment'], 422);
+            }
+
+            return response()->json(['success' => true, 'remote' => $result]);
+        } catch (\Exception $e) {
+            Log::error('Admin check payment status failed', ['message' => $e->getMessage(), 'payment_id' => $payment->id]);
+            return response()->json(['error' => 'Failed to fetch remote payment status', 'message' => $e->getMessage()], 500);
+        }
     }
 }

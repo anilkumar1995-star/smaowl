@@ -9,8 +9,9 @@ import { edit as editPassword } from '@/routes/user-password';
 import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/react';
 import { type PropsWithChildren } from 'react';
+import { usePage } from '@inertiajs/react';
 
-const sidebarNavItems: NavItem[] = [
+const baseSidebarNavItems: NavItem[] = [
     {
         title: 'Profile',
         href: edit(),
@@ -40,6 +41,18 @@ export default function SettingsLayout({ children }: PropsWithChildren) {
     }
 
     const currentPath = window.location.pathname;
+    const { props } = usePage<any>();
+    const isAdmin = props?.auth?.isAdmin || props?.is_admin || false;
+    const devEnabled = props?.developer_controls || false;
+
+    const sidebarNavItems: NavItem[] = [...baseSidebarNavItems];
+    if (devEnabled) {
+        sidebarNavItems.push({
+            title: 'Developer Settings',
+            href: '/settings/developer',
+            icon: null,
+        });
+    }
 
     return (
         <div className="px-4 py-6">

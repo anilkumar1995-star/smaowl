@@ -30,6 +30,11 @@ interface LedgerEntry {
     reference_id?: number | null;
     meta?: any;
     created_at: string;
+    user?: {
+        id: number;
+        name: string;
+        email: string;
+    };
 }
 
 interface PaymentsLedgerProps {
@@ -43,11 +48,13 @@ interface PaymentsLedgerProps {
         next_page_url?: string | null;
         path?: string;
     };
-    closingBalance: number;
+    closingBalance: number | null;
+    isAdmin: boolean;
+    companyBalance?: number | null;
     filters?: Record<string, any>;
 }
 
-export default function PaymentsLedger({ ledgers, closingBalance }: PaymentsLedgerProps) {
+export default function PaymentsLedger({ ledgers, closingBalance, isAdmin, companyBalance }: PaymentsLedgerProps) {
     const getTypeBadge = (type: string) => {
         const variants = {
             credit: 'default',
@@ -70,20 +77,22 @@ export default function PaymentsLedger({ ledgers, closingBalance }: PaymentsLedg
 
             <div className="flex h-full flex-1 flex-col gap-4 p-4">
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <CardTitle className="text-sm font-medium">Closing Balance</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">₹{parseFloat(String(closingBalance)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                        </CardContent>
-                    </Card>
+                    {closingBalance !== null && (
+                        <Card>
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                <CardTitle className="text-sm font-medium">Closing Balance</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-bold">₹{parseFloat(String(closingBalance)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                            </CardContent>
+                        </Card>
+                    )}
                 </div>
 
                 <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-2xl font-bold">Ledger</h1>
-                        <p className="text-muted-foreground">View all your credit and debit entries</p>
+                        <p className="text-muted-foreground">{isAdmin ? 'View all ledger entries across all users' : 'View all your credit and debit entries'}</p>
                     </div>
                     <Button asChild>
                         <Link href={payments.history().url}>Payment History</Link>
@@ -134,6 +143,8 @@ export default function PaymentsLedger({ ledgers, closingBalance }: PaymentsLedg
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Date</TableHead>
+                                    {isAdmin && <TableHead>User</TableHead>}
+                                        {isAdmin && <TableHead>Company Balance</TableHead>}
                                     <TableHead>Type</TableHead>
                                     <TableHead>Amount</TableHead>
                                     <TableHead>Balance</TableHead>
@@ -145,6 +156,30 @@ export default function PaymentsLedger({ ledgers, closingBalance }: PaymentsLedg
                                 {ledgers.data.map((entry) => (
                                     <TableRow key={entry.id}>
                                         <TableCell>{new Date(entry.created_at).toLocaleString()}</TableCell>
+                                        {isAdmin && (
+                                            <TableCell>
+                                                {entry.user ? (
+                                                    <div>
+                                                        <div className="font-medium">{entry.user.name}</div>
+                                                        <div className="text-sm text-muted-foreground">{entry.user.email}</div>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-muted-foreground">-</span>
+                                                )}
+                                            </TableCell>
+                                        )}
+                                        {isAdmin && (
+                                            <TableCell>
+                                                {(() => {
+                                                    const val = entry.company_balance ?? companyBalance;
+                                                    const num = val === null || val === undefined ? NaN : Number(val);
+                                                    if (!Number.isFinite(num)) {
+                                                        return <div className="font-medium">-</div>;
+                                                    }
+                                                    return <div className="font-medium">₹{num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>;
+                                                })()}
+                                            </TableCell>
+                                        )}
                                         <TableCell>{getTypeBadge(entry.type)}</TableCell>
                                         <TableCell>₹{parseFloat(String(entry.amount)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                                         <TableCell>₹{parseFloat(String(entry.balance)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>

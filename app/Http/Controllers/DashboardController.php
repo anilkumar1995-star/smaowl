@@ -7,63 +7,95 @@ use App\Models\Payment;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
 
 class DashboardController
 {
     public function stats(): JsonResponse
     {
-        $totalUsers = User::count();
-        $totalOrders = Order::count();
-        $totalRevenue = (float) Payment::where('status', 'captured')->sum('amount');
+        $user = Auth::user();
+        $isAdmin = in_array($user->email, config('app.admin_emails', []));
 
-        // Month over month comparisons
-        $now = Carbon::now();
-        $startOfThisMonth = $now->copy()->startOfMonth();
-        $startOfLastMonth = $now->copy()->subMonthNoOverflow()->startOfMonth();
-        $endOfLastMonth = $now->copy()->subMonthNoOverflow()->endOfMonth();
+        if ($isAdmin) {
+            $totalUsers = User::count();
+            $totalOrders = Order::count();
+            $totalRevenue = (float) Payment::where('status', 'captured')->sum('amount');
 
-        $usersThisMonth = User::where('created_at', '>=', $startOfThisMonth)->count();
-        $usersLastMonth = User::whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])->count();
+            // Month over month comparisons
+            $now = Carbon::now();
+            $startOfThisMonth = $now->copy()->startOfMonth();
+            $startOfLastMonth = $now->copy()->subMonthNoOverflow()->startOfMonth();
+            $endOfLastMonth = $now->copy()->subMonthNoOverflow()->endOfMonth();
 
-        $ordersThisMonth = Order::where('created_at', '>=', $startOfThisMonth)->count();
-        $ordersLastMonth = Order::whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])->count();
+            $usersThisMonth = User::where('created_at', '>=', $startOfThisMonth)->count();
+            $usersLastMonth = User::whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])->count();
 
-        $revenueThisMonth = (float) Payment::where('status', 'captured')->where('created_at', '>=', $startOfThisMonth)->sum('amount');
-        $revenueLastMonth = (float) Payment::where('status', 'captured')->whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])->sum('amount');
+            $ordersThisMonth = Order::where('created_at', '>=', $startOfThisMonth)->count();
+            $ordersLastMonth = Order::whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])->count();
 
-        $percentChange = function (float $current, float $previous): string {
-            if ($previous <= 0) {
-                return $current > 0 ? '+100%' : '+0%';
-            }
+            $revenueThisMonth = (float) Payment::where('status', 'captured')->where('created_at', '>=', $startOfThisMonth)->sum('amount');
+            $revenueLastMonth = (float) Payment::where('status', 'captured')->whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])->sum('amount');
 
-            $diff = (($current - $previous) / max(1, $previous)) * 100;
-            return sprintf("%+.1f%%", $diff);
-        };
+            $percentChange = function (float $current, float $previous): string {
+                if ($previous <= 0) {
+                    return $current > 0 ? '+100%' : '+0%';
+                }
 
-        return response()->json([
-            'users' => [
-                'value' => $totalUsers,
-                'this_month' => $usersThisMonth,
-                'last_month' => $usersLastMonth,
-                'change' => $percentChange($usersThisMonth, $usersLastMonth),
-            ],
-            'orders' => [
-                'value' => $totalOrders,
-                'this_month' => $ordersThisMonth,
-                'last_month' => $ordersLastMonth,
-                'change' => $percentChange($ordersThisMonth, $ordersLastMonth),
-            ],
-            'revenue' => [
-                'value' => round($totalRevenue, 2),
-                'this_month' => round($revenueThisMonth, 2),
-                'last_month' => round($revenueLastMonth, 2),
-                'change' => $percentChange($revenueThisMonth, $revenueLastMonth),
-            ],
-        ]);
+                $diff = (($current - $previous) / max(1, $previous)) * 100;
+                return sprintf("%+.1f%%", $diff);
+            };
+
+            return response()->json([
+                'users' => [
+                    'value' => $totalUsers,
+                    'this_month' => $usersThisMonth,
+                    'last_month' => $usersLastMonth,
+                    'change' => $percentChange($usersThisMonth, $usersLastMonth),
+                ],
+                'orders' => [
+                    'value' => $totalOrders,
+                    'this_month' => $ordersThisMonth,
+                    'last_month' => $ordersLastMonth,
+                    'change' => $percentChange($ordersThisMonth, $ordersLastMonth),
+                ],
+                'revenue' => [
+                    'value' => round($totalRevenue, 2),
+                    'this_month' => round($revenueThisMonth, 2),
+                    'last_month' => round($revenueLastMonth, 2),
+                    'change' => $percentChange($revenueThisMonth, $revenueLastMonth),
+                ],
+            ]);
+        } else {
+            // User's stats
+            $totalOrders = Order::where('user_id', $user->id)->count();
+            $totalRevenue = (float) Payment::where('user_id', $user->id)->where('status', 'captured')->sum('amount');
+
+            return response()->json([
+                'users' => [
+                    'value' => 1,
+                    'change' => null,
+                ],
+                'orders' => [
+                    'value' => $totalOrders,
+                    'change' => null,
+                ],
+                'revenue' => [
+                    'value' => round($totalRevenue, 2),
+                    'change' => null,
+                ],
+            ]);
+        }
     }
 
     public function series(\Illuminate\Http\Request $request): JsonResponse
     {
+        $user = Auth::user();
+        $isAdmin = in_array($user->email, config('app.admin_emails', []));
+
+        if (!$isAdmin) {
+            return response()->json([]);
+        }
+
         $days = max(1, (int) $request->query('days', 30));
         $now = Carbon::now();
         $start = $now->copy()->subDays($days - 1)->startOfDay();

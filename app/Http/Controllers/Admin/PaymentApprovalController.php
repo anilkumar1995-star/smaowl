@@ -26,8 +26,8 @@ class PaymentApprovalController extends Controller
         }
 
         // Apply filters
-        $pendingQuery = Payment::where('status', 'pending')->where('metadata->manual_request', true)->with('user')->orderByDesc('created_at');
-        $approvedQuery = Payment::where('status', 'captured')->where('metadata->manual_request', true)->with('user')->orderByDesc('paid_at');
+        $pendingQuery = Payment::where('status', 'pending')->where('metadata->manual_request', true)->with('user')->orderByDesc('id');
+        $approvedQuery = Payment::where('status', 'captured')->where('metadata->manual_request', true)->with('user')->orderByDesc('id');
 
         $filters = $request->only(['user_email', 'start_date', 'end_date', 'min_amount', 'max_amount', 'status']);
 
@@ -135,6 +135,7 @@ class PaymentApprovalController extends Controller
                 'type' => 'credit',
                 'amount' => number_format((float)$payment->amount, 2, '.', ''),
                 'balance' => number_format((float)$payment->user->balance, 2, '.', ''),
+                'company_balance' => number_format((float) \App\Models\User::sum('balance'), 2, '.', ''),
                 'reference_type' => 'payment',
                 'reference_id' => $payment->id,
                 'description' => 'Manual wallet load approved by admin',
@@ -156,7 +157,11 @@ class PaymentApprovalController extends Controller
         }
 
         if ($payment->status !== 'pending' || empty($payment->metadata['manual_request'] ?? null)) {
-            return response()->json(['error' => 'Payment is not a pending manual request'], 422);
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'Payment is not a pending manual request'], 422);
+            }
+
+            return redirect()->back()->withErrors(['error' => 'Payment is not a pending manual request']);
         }
 
         $payment->update([
@@ -164,7 +169,11 @@ class PaymentApprovalController extends Controller
             'metadata' => array_merge((array)$payment->metadata, ['rejected_by' => Auth::id(), 'rejected_reason' => $request->input('reason')]),
         ]);
 
-        return response()->json(['success' => true]);
+        if ($request->wantsJson()) {
+            return response()->json(['success' => true]);
+        }
+
+        return redirect()->back()->with('success', 'Manual load rejected');
     }
 
     public function export(Request $request)
@@ -173,7 +182,7 @@ class PaymentApprovalController extends Controller
             abort(403);
         }
 
-        $query = Payment::where('metadata->manual_request', true)->with('user')->orderByDesc('created_at');
+        $query = Payment::where('metadata->manual_request', true)->with('user')->orderByDesc('id');
 
         if ($userEmail = $request->query('user_email')) {
             $query->whereHas('user', function ($q) use ($userEmail) {

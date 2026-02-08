@@ -42,6 +42,9 @@ createInertiaApp({
 
         const root = createRoot(el);
 
+        // Expose initial props for easier debugging in browser console
+        (window as any).__INITIAL_PAGE__ = props;
+
         root.render(
             <StrictMode>
                 <AppWithRazorpay />

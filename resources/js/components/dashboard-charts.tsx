@@ -1,17 +1,13 @@
 import React from 'react';
-import {
-    ResponsiveContainer,
-    LineChart,
-    Line,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-    AreaChart,
-    Area,
-    BarChart,
-    Bar,
-} from 'recharts';
+import { ResponsiveContainer } from 'recharts/es6/component/ResponsiveContainer';
+import { XAxis } from 'recharts/es6/cartesian/XAxis';
+import { YAxis } from 'recharts/es6/cartesian/YAxis';
+import { CartesianGrid } from 'recharts/es6/cartesian/CartesianGrid';
+import { Tooltip } from 'recharts/es6/component/Tooltip';
+import { AreaChart } from 'recharts/es6/chart/AreaChart';
+import { Area } from 'recharts/es6/cartesian/Area';
+import { BarChart } from 'recharts/es6/chart/BarChart';
+import { Bar } from 'recharts/es6/cartesian/Bar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 type Point = { date: string; orders: number; revenue: number };
@@ -40,7 +36,7 @@ export default function DashboardCharts({ data }: { data: Point[] }) {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Revenue (last {data.length} days)</CardTitle>
+                    <CardTitle>Payments (last {data.length} days)</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div style={{ width: '100%', height: 240 }}>

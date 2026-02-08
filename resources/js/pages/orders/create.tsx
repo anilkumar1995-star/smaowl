@@ -8,7 +8,8 @@ import orders from '@/routes/orders';
 import { type BreadcrumbItem } from '@/types';
 import { Head, useForm } from '@inertiajs/react';
 import Swal from 'sweetalert2';
-import { FormEventHandler, useState, useEffect } from 'react';
+import { FormEventHandler, useState, useEffect, useRef } from 'react';
+import { usePage } from '@inertiajs/react';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -44,13 +45,17 @@ interface CreateOrderProps {
 }
 
 export default function CreateOrder({ serviceGroups }: CreateOrderProps) {
-    const { data, setData, post, processing, errors } = useForm({
-        service: '',
+    // Seed `service` from query param to improve initial render selection
+    const initialService = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('service') ?? '' : '';
+    const { data, setData, errors } = useForm({
+        service: initialService,
         link: '',
         quantity: '',
     });
+    const [submitting, setSubmitting] = useState(false);
 
     const [selectedGroup, setSelectedGroup] = useState('');
+    const [selectedServiceVal, setSelectedServiceVal] = useState(initialService);
 
     // When serviceGroups prop arrives/changes, set a default selected group if none selected
     useEffect(() => {
@@ -59,9 +64,85 @@ export default function CreateOrder({ serviceGroups }: CreateOrderProps) {
         }
     }, [serviceGroups]);
 
+    // If a `service` query param is present, preselect that service and its group
+    useEffect(() => {
+        try {
+            const params = new URLSearchParams(window.location.search);
+            const svc = params.get('service');
+            if (!svc) return;
+
+            // find which group contains this service and set both group+service synchronously
+            for (const g of serviceGroups) {
+                const found = (g.services || []).find((s) => s.service?.toString() === svc.toString());
+                if (found) {
+                    setSelectedGroup(g.id.toString());
+                    setSelectedServiceVal(found.service.toString());
+                    setData('service', found.service.toString());
+
+                    // if quantity has no min/default, set to min
+                    if (!data.quantity && found.min) {
+                        setData('quantity', String(found.min));
+                    }
+
+                    // UX: scroll form into view, focus quantity, and show a small toast so user notices the preselection
+                    try {
+                        formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        setTimeout(() => {
+                            const qty = document.getElementById('quantity') as HTMLInputElement | null;
+                            qty?.focus();
+                        }, 300);
+
+                        Swal.fire({
+                            toast: true,
+                            position: 'top-end',
+                            icon: 'info',
+                            title: `Preselected: ${found.name}`,
+                            showConfirmButton: false,
+                            timer: 2200,
+                        });
+                    } catch (e) {
+                        // ignore UX failures
+                    }
+
+                    break;
+                }
+            }
+        } catch (e) {
+            // ignore
+        }
+    }, [serviceGroups]);
+
+    // Also react to serviceGroups loading when the form already has a service value
+    useEffect(() => {
+        try {
+            const svc = data.service || selectedServiceVal;
+            if (!svc) return;
+
+            for (const g of serviceGroups) {
+                const found = (g.services || []).find((s) => s.service?.toString() === svc.toString());
+                if (found) {
+                    // ensure both category and service UI values are set
+                    setSelectedGroup(g.id.toString());
+                    setSelectedServiceVal(found.service.toString());
+                    // ensure form value set
+                    setData('service', found.service.toString());
+
+                    // set quantity default if missing
+                    if (!data.quantity && found.min) {
+                        setData('quantity', String(found.min));
+                    }
+
+                    break;
+                }
+            }
+        } catch (e) {
+            // ignore
+        }
+    }, [serviceGroups, data.service, selectedServiceVal]);
+
     const subServices = serviceGroups.find(g => g.id.toString() === selectedGroup)?.services ?? [];
 
-    const selectedService = subServices.find(s => s.service.toString() === data.service);
+    const selectedService = subServices.find(s => s.service.toString() === (data.service || selectedServiceVal));
 
     const calculateCost = () => {
         if (!selectedService || !data.quantity) return 0;
@@ -70,45 +151,68 @@ export default function CreateOrder({ serviceGroups }: CreateOrderProps) {
         return (rate * quantity) / 100; // Assuming rate is per 100
     };
 
-    const submit: FormEventHandler = (e) => {
+    const formRef = useRef<HTMLFormElement | null>(null);
+
+    const submit: FormEventHandler = async (e) => {
         e.preventDefault();
-        post(orders.store().url, {
-            onError: (errs) => {
-                // If server returned a non-field error under 'server', show Swal
-                if (errs?.server) {
-                    Swal.fire({
-                        title: 'Order failed',
-                        text: errs.server,
-                        icon: 'error',
+        setSubmitting(true);
+
+        const csrf = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
+
+        try {
+            const res = await fetch(orders.store().url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrf,
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify(data),
+            });
+
+            let payload: any = null;
+            try { payload = await res.json(); } catch (err) { payload = null; }
+
+            if (!res.ok) {
+                // gather messages from JSON payload if present
+                const messages: string[] = [];
+                if (payload && payload.errors) {
+                    const errs = payload.errors;
+                    Object.keys(errs).forEach((k) => {
+                        const v = errs[k];
+                        if (Array.isArray(v)) messages.push(...v.map(String));
+                        else messages.push(String(v));
                     });
-                }
-            },
-            onSuccess: (resp: any) => {
-                // If backend returned our saved app order, show that id and message
-                if (resp?.app_order) {
-                    Swal.fire({
-                        title: 'Order placed',
-                        text: `Order #${resp.app_order.id} placed successfully`,
-                        icon: 'success',
-                    }).then(() => {
-                        // reset form
-                        setData('service', '');
-                        setData('link', '');
-                        setData('quantity', '');
-                    });
+                } else if (payload && payload.error) {
+                    messages.push(String(payload.error));
                 } else {
-                    Swal.fire({
-                        title: 'Order placed',
-                        text: 'Your order was placed successfully.',
-                        icon: 'success',
-                    }).then(() => {
-                        setData('service', '');
-                        setData('link', '');
-                        setData('quantity', '');
-                    });
+                    messages.push(res.statusText || 'Request failed');
                 }
+
+                await Swal.fire({
+                    title: 'Order failed',
+                    html: `<div style="text-align:left">${messages.map(m => `<div>• ${m}</div>`).join('')}</div>`,
+                    icon: 'error',
+                });
+            } else {
+                const appOrder = payload?.app_order || payload?.order || null;
+                const id = appOrder?.id ?? null;
+
+                await Swal.fire({
+                    title: appOrder ? 'Order placed' : 'Success',
+                    text: appOrder ? `Order #${id} placed successfully` : (payload?.message ?? 'Your order was placed successfully.'),
+                    icon: 'success',
+                });
+
+                setData('service', '');
+                setData('link', '');
+                setData('quantity', '');
             }
-        });
+        } catch (err: any) {
+            await Swal.fire({ title: 'Order failed', text: err?.message || 'Network error', icon: 'error' });
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     return (
@@ -125,10 +229,7 @@ export default function CreateOrder({ serviceGroups }: CreateOrderProps) {
                     </div>
                 </div>
 
-                {/* Debug: show serviceGroups and selectedGroup in dev */}
-                <div className="mt-2">
-                    <pre className="text-xs text-muted-foreground">{JSON.stringify({ count: serviceGroups?.length ?? 0, selectedGroup }, null, 2)}</pre>
-                </div>
+                
 
                 <Card>
                     <CardHeader>
@@ -138,7 +239,7 @@ export default function CreateOrder({ serviceGroups }: CreateOrderProps) {
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <form onSubmit={submit} className="space-y-4">
+                        <form ref={formRef} onSubmit={submit} className="space-y-4" id="order-form">
                             <div>
                                 <Label htmlFor="group">Category</Label>
                                 <Select value={selectedGroup} onValueChange={(value) => { setSelectedGroup(value); setData('service', ''); }}>
@@ -163,7 +264,7 @@ export default function CreateOrder({ serviceGroups }: CreateOrderProps) {
 
                             <div>
                                 <Label htmlFor="service">Service</Label>
-                                <Select value={data.service} onValueChange={(value) => setData('service', value)}>
+                                <Select value={selectedServiceVal} onValueChange={(value) => { setData('service', value); setSelectedServiceVal(value); }}>
                                     <SelectTrigger>
                                         <SelectValue placeholder="Select a service" />
                                     </SelectTrigger>
@@ -227,7 +328,18 @@ export default function CreateOrder({ serviceGroups }: CreateOrderProps) {
                                 </div>
                             )}
 
-                            <Button type="submit" disabled={processing}>
+                            <Button
+                                type="submit"
+                                disabled={submitting}
+                                onClick={() => {
+                                    // Ensure form is submitted even if native submit is blocked by overlay or layout issues
+                                    try {
+                                        formRef.current?.requestSubmit?.();
+                                    } catch (e) {
+                                        // ignore - fallback to normal submit via button
+                                    }
+                                }}
+                            >
                                 Place Order
                             </Button>
                         </form>

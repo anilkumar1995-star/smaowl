@@ -102,6 +102,9 @@ return [
     // Admin emails (comma-separated) who can approve manual wallet requests
     'admin_emails' => array_filter(array_map('trim', explode(',', env('ADMIN_EMAILS', '')))),
 
+    // Enable Developer Controls (admin-only UI) via env flag
+    'developer_controls' => (bool) env('DEVELOPER_CONTROLS_ENABLED', false),
+
 
     'previous_keys' => [
         ...array_filter(
@@ -126,5 +129,16 @@ return [
         'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Admin Emails
+    |--------------------------------------------------------------------------
+    |
+    | List of email addresses that have admin access.
+    |
+    */
+
+    // 'admin_emails' is defined above with trimming; keep that single source.
 
 ];

@@ -8,7 +8,14 @@ import { dashboard } from '@/routes';
 import payments from '@/routes/payments';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, usePage } from '@inertiajs/react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import Swal from 'sweetalert2';
+import { BarChart } from 'recharts/es6/chart/BarChart';
+import { Bar } from 'recharts/es6/cartesian/Bar';
+import { XAxis } from 'recharts/es6/cartesian/XAxis';
+import { YAxis } from 'recharts/es6/cartesian/YAxis';
+import { CartesianGrid } from 'recharts/es6/cartesian/CartesianGrid';
+import { Tooltip } from 'recharts/es6/component/Tooltip';
+import { ResponsiveContainer } from 'recharts/es6/component/ResponsiveContainer';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -29,6 +36,7 @@ interface Payment {
     razorpay_payment_id: string | null;
     created_at: string;
     paid_at: string | null;
+    metadata?: any;
 }
 
 interface PaymentsHistoryProps {
@@ -48,9 +56,9 @@ interface PaymentsHistoryProps {
     filters?: Record<string, any>;
 }
 
-export default function PaymentsHistory({ payments, totalInvested, availableBalance, graphData }: PaymentsHistoryProps) {
+export default function PaymentsHistory({ payments, totalInvested, availableBalance, graphData, filters }: PaymentsHistoryProps) {
     const { props } = usePage<any>();
-    const isAdmin = props?.auth?.isAdmin;
+    const isAdmin = props?.auth?.isAdmin || props?.isAdmin || props?.is_admin || false;
 
     const getStatusBadge = (status: string) => {
         const variants = {
@@ -179,10 +187,11 @@ export default function PaymentsHistory({ payments, totalInvested, availableBala
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Date</TableHead>
-                                    <TableHead>Amount</TableHead>
                                     <TableHead>Type</TableHead>
+                                    <TableHead>Amount</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead>Payment ID</TableHead>
+                                    {isAdmin && <TableHead>Action</TableHead>}
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -210,6 +219,160 @@ export default function PaymentsHistory({ payments, totalInvested, availableBala
                                                 <span className="text-muted-foreground">-</span>
                                             )}
                                         </TableCell>
+
+                                        {isAdmin && (
+                                            <TableCell>
+                                                <div className="flex items-center gap-2">
+                                                    <Button variant="outline" size="sm" onClick={async () => {
+                                                    try {
+                                                        const tokenMeta = document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement | null;
+                                                        const token = tokenMeta ? tokenMeta.content : '';
+
+                                                        const res = await fetch(`/admin/payments/${payment.id}/check`, {
+                                                            method: 'POST',
+                                                            headers: {
+                                                                'Content-Type': 'application/json',
+                                                                'X-CSRF-TOKEN': token,
+                                                            },
+                                                            credentials: 'same-origin',
+                                                        });
+
+                                                        const data = await res.json();
+
+                                                        if (!res.ok) {
+                                                            await Swal.fire({ title: 'Error', text: data?.error || 'Failed to fetch status', icon: 'error' });
+                                                            return;
+                                                        }
+
+                                                        const remote = data.remote;
+
+                                                        const escapeHtml = (s: string) =>
+                                                            s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+                                                        const first = Array.isArray(remote) ? remote[0] : remote;
+
+                                                        let details = '';
+                                                        if (first && typeof first === 'object') {
+                                                            const fields = [
+                                                                ['ID', first.id || first.razorpay_payment_id || first.order_id || ''],
+                                                                ['Status', first.status ?? first.state ?? 'unknown'],
+                                                                ['Amount', first.amount ? `₹${(parseFloat(first.amount) / (first.currency === 'INR' ? 100 : 1)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''],
+                                                                ['Captured', first.captured === undefined ? '' : String(first.captured)],
+                                                                ['Order', first.order_id || ''],
+                                                                ['Method', first.method || ''],
+                                                                ['Refunded', first.amount_refunded ? String(first.amount_refunded) : '0'],
+                                                                ['Email', first.email || ''],
+                                                                ['Contact', first.contact || ''],
+                                                            ];
+
+                                                            details = '<div style="text-align:left;margin-bottom:8px">' + fields.map(([k, v]) => `<div><strong>${escapeHtml(k + ':')}</strong> ${escapeHtml(String(v ?? ''))}</div>`).join('') + '</div>';
+                                                        }
+
+                                                        const pretty = escapeHtml(JSON.stringify(remote, null, 2));
+                                                        const html = `${details}<pre style="text-align:left;white-space:pre-wrap;max-height:420px;overflow:auto;background:#f6f8fa;padding:12px;border-radius:6px">${pretty}</pre>`;
+
+                                                        await Swal.fire({ title: 'Remote Payment Status', html, width: 760 });
+                                                    } catch (err) {
+                                                        await Swal.fire({ title: 'Error', text: String(err), icon: 'error' });
+                                                    }
+                                                    }}>
+                                                        Check
+                                                    </Button>
+
+                                                    <Button variant="secondary" size="sm" disabled={payment.status === 'captured'} onClick={async () => {
+                                                        const confirmed = await Swal.fire({
+                                                            title: 'Capture Payment?',
+                                                            text: `Capture payment #${payment.id} and credit user?`,
+                                                            icon: 'question',
+                                                            showCancelButton: true,
+                                                            confirmButtonText: 'Capture',
+                                                        });
+
+                                                        if (!confirmed.isConfirmed) return;
+
+                                                        try {
+                                                            const tokenMeta = document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement | null;
+                                                            const token = tokenMeta ? tokenMeta.content : '';
+
+                                                            const res = await fetch(`/admin/payments/${payment.id}/status`, {
+                                                                method: 'POST',
+                                                                headers: {
+                                                                    'Content-Type': 'application/json',
+                                                                    'X-CSRF-TOKEN': token,
+                                                                },
+                                                                credentials: 'same-origin',
+                                                                body: JSON.stringify({ status: 'captured' }),
+                                                            });
+
+                                                            const data = await res.json();
+
+                                                            if (!res.ok) {
+                                                                await Swal.fire({ title: 'Error', text: data?.error || 'Failed to capture', icon: 'error' });
+                                                                return;
+                                                            }
+
+                                                            await Swal.fire({ title: 'Captured', text: 'Payment captured and user credited', icon: 'success' });
+                                                            location.reload();
+                                                        } catch (err) {
+                                                            await Swal.fire({ title: 'Error', text: String(err), icon: 'error' });
+                                                        }
+                                                    }}>
+                                                        Capture
+                                                    </Button>
+
+                                                    <Button variant="destructive" size="sm" disabled={payment.status === 'failed'} onClick={async () => {
+                                                        const { value: reason } = await Swal.fire({
+                                                            title: 'Reject Payment',
+                                                            input: 'textarea',
+                                                            inputLabel: 'Reason (optional)',
+                                                            inputPlaceholder: 'Enter reason for rejection',
+                                                            showCancelButton: true,
+                                                        });
+
+                                                        if (reason === undefined) return; // cancelled
+
+                                                        const confirmed = await Swal.fire({
+                                                            title: 'Confirm Reject',
+                                                            text: 'Mark payment as failed and do not credit user?',
+                                                            icon: 'warning',
+                                                            showCancelButton: true,
+                                                            confirmButtonText: 'Reject',
+                                                        });
+
+                                                        if (!confirmed.isConfirmed) return;
+
+                                                        try {
+                                                            const tokenMeta = document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement | null;
+                                                            const token = tokenMeta ? tokenMeta.content : '';
+
+                                                            const res = await fetch(`/admin/payments/${payment.id}/status`, {
+                                                                method: 'POST',
+                                                                headers: {
+                                                                    'Content-Type': 'application/json',
+                                                                    'X-CSRF-TOKEN': token,
+                                                                },
+                                                                credentials: 'same-origin',
+                                                                body: JSON.stringify({ status: 'failed', reason }),
+                                                            });
+
+                                                            const data = await res.json();
+
+                                                            if (!res.ok) {
+                                                                await Swal.fire({ title: 'Error', text: data?.error || 'Failed to reject', icon: 'error' });
+                                                                return;
+                                                            }
+
+                                                            await Swal.fire({ title: 'Rejected', text: 'Payment marked as failed', icon: 'success' });
+                                                            location.reload();
+                                                        } catch (err) {
+                                                            await Swal.fire({ title: 'Error', text: String(err), icon: 'error' });
+                                                        }
+                                                    }}>
+                                                        Reject
+                                                    </Button>
+                                                </div>
+                                            </TableCell>
+                                        )}
                                     </TableRow>
                                 ))}
                             </TableBody>
@@ -220,6 +383,30 @@ export default function PaymentsHistory({ payments, totalInvested, availableBala
                                 No payment transactions found.
                             </div>
                         )}
+                        {/* Pagination */}
+                        <div className="flex items-center justify-between mt-4">
+                            <div className="text-sm text-muted-foreground">
+                                Showing {payments.data.length > 0 ? ((payments.current_page - 1) * payments.per_page + 1) : 0} - {Math.min(payments.current_page * payments.per_page, payments.total)} of {payments.total}
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <Button asChild disabled={!payments.prev_page_url} variant="outline">
+                                    <Link href={payments.prev_page_url || '#'}>Previous</Link>
+                                </Button>
+
+                                <div className="flex items-center gap-1">
+                                    {Array.from({ length: Math.min(payments.last_page || 0, 10) }, (_, i) => i + 1).map((page) => (
+                                        <Button key={page} asChild variant={page === payments.current_page ? undefined : 'outline'}>
+                                            <Link href={`${payments.path || '/payments/history'}?page=${page}`}>{page}</Link>
+                                        </Button>
+                                    ))}
+                                </div>
+
+                                <Button asChild disabled={!payments.next_page_url} variant="outline">
+                                    <Link href={payments.next_page_url || '#'}>Next</Link>
+                                </Button>
+                            </div>
+                        </div>
                     </CardContent>
                 </Card>
             </div>

@@ -14,6 +14,7 @@ import { dashboard } from '@/routes';
 import orders from '@/routes/orders';
 import payments from '@/routes/payments';
 import adminPayments from '@/routes/admin/payments';
+import adminDeveloper from '@/routes/admin';
 import { usePage } from '@inertiajs/react';
 import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/react';
@@ -53,25 +54,38 @@ const footerNavItems: NavItem[] = [
 
 export function AppSidebar() {
     const { props } = usePage<any>();
-    const isAdmin = props?.auth?.isAdmin;
+    // Support both Inertia shared `auth.isAdmin` and page-level `is_admin` prop
+    const isAdmin = props?.auth?.isAdmin || props?.is_admin || false;
 
     const mainNavItems = [...baseNavItems];
-
+ if (isAdmin == false) {
     // Wallet Load for regular users
     mainNavItems.push({
         title: 'Wallet Load',
         href: payments.manual.create().url,
         icon: Wallet,
     });
+}
 
-    // Admin-only management link
+    // Admin-only management links
     if (isAdmin) {
         mainNavItems.push({
             title: 'Manage Wallet Loads',
             href: adminPayments.index().url,
             icon: Wallet,
         });
+
+        
     }
+    // Developer Controls (feature-flagged)
+        const showDev = props?.developer_controls || false;
+        if (showDev) {
+            mainNavItems.push({
+                title: 'Developer Controls',
+                href: adminDeveloper.developer.keys().url,
+                icon: Wallet,
+            });
+        }
 
     return (
         <Sidebar collapsible="icon" variant="inset">

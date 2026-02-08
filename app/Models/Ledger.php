@@ -14,6 +14,7 @@ class Ledger extends Model
         'type',
         'amount',
         'balance',
+        'company_balance',
         'reference_type',
         'reference_id',
         'description',
@@ -23,6 +24,7 @@ class Ledger extends Model
     protected $casts = [
         'amount' => 'decimal:2',
         'balance' => 'decimal:2',
+        'company_balance' => 'decimal:2',
         'meta' => 'array',
     ];
 
