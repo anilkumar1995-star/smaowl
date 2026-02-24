@@ -140,4 +140,34 @@
     body {
         @apply bg-background text-foreground;
     }
+
+    /* Responsive helpers: make media fit and provide a simple container padding */
+    img, video, iframe {
+        max-width: 100%;
+        height: auto;
+        display: block;
+    }
+
+    /* Add a utility container class for consistent horizontal padding on small screens */
+    .site-container {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    @screen sm {
+        .site-container {
+            padding-left: 1.5rem;
+            padding-right: 1.5rem;
+        }
+    }
+
+    @screen md {
+        .site-container {
+            padding-left: 2rem;
+            padding-right: 2rem;
+            max-width: 72rem;
+            margin-left: auto;
+            margin-right: auto;
+        }
+    }
 }
