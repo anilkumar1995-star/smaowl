@@ -1,5 +1,6 @@
 import PublicLayout from '@/layouts/public-layout';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
+import orders from '@/routes/orders';
 
 export default function Landing() {
     return (
@@ -14,7 +15,14 @@ export default function Landing() {
                         <p className="mt-4 text-lg text-gray-600 dark:text-gray-300 max-w-xl">We provide high-quality, reliable social media services with transparent pricing and secure payments. Scale your accounts confidently with a platform trusted by thousands.</p>
 
                         <div className="mt-8 flex flex-wrap gap-4">
-                            <Link href="/orders/create" className="inline-block bg-gradient-to-r from-yellow-400 to-orange-400 text-black font-semibold px-6 py-3 rounded-md shadow-lg">Create Order</Link>
+                            {(() => {
+                                const page = usePage<any>();
+                                const auth = page.props?.auth;
+                                const href = auth && auth.user ? orders.create().url : '/login?redirect=/orders/create';
+                                return (
+                                    <Link href={href} className="inline-block bg-gradient-to-r from-yellow-400 to-orange-400 text-black font-semibold px-6 py-3 rounded-md shadow-lg">Create Order</Link>
+                                );
+                            })()}
                             <Link href="/services" className="inline-block border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 px-6 py-3 rounded-md">View Services</Link>
                         </div>
 

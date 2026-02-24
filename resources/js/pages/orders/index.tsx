@@ -87,7 +87,7 @@ export default function OrdersIndex({ orders, filters }: OrdersProps) {
                     {/* Hide create order button for admin users */}
                     {(!props?.auth?.isAdmin) && (
                         <Button asChild>
-                            <Link href='orders/create'>Create Order</Link>
+                            <Link href='/admin/orders/create'>Create Order</Link>
                         </Button>
                     )}
                 </div>

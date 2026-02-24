@@ -86,7 +86,7 @@
     --chart-3: oklch(0.398 0.07 227.392);
     --chart-4: oklch(0.828 0.189 84.429);
     --chart-5: oklch(0.769 0.188 70.08);
-    --radius: 0.625rem;
+    --radius: 0.75rem;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
     --sidebar-primary: oklch(0.205 0 0);
@@ -171,3 +171,47 @@
         }
     }
 }
+
+/* Design tokens and small component utilities to improve visual polish */
+@layer components {
+    .btn-primary {
+        @apply inline-flex items-center gap-2 bg-primary text-primary-foreground px-3 py-1.5 rounded-[var(--radius)] shadow-sm hover:shadow-md transition-shadow duration-150;
+    }
+
+    .soft-card {
+        @apply rounded-[var(--radius)] bg-card p-3 border border-border/20 shadow-sm;
+    }
+
+    .public-header nav a {
+        @apply text-sm text-muted-foreground hover:text-foreground transition-colors;
+    }
+
+    .public-header .brand {
+        @apply font-semibold text-lg;
+    }
+}
+
+    /* Modern modal/dialog tweaks and utility tokens */
+    @layer utilities {
+        :root {
+            --elevation-1: 0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.06);
+            --elevation-2: 0 8px 30px rgba(16,24,40,0.09);
+        }
+
+        .dialog-overlay {
+            background-color: rgba(2,6,23,0.45);
+            backdrop-filter: blur(4px);
+        }
+
+        .dialog-content {
+            border-radius: var(--radius);
+            box-shadow: var(--elevation-2);
+            padding: 1.25rem;
+            background-color: var(--card);
+        }
+
+        .modern-input:focus {
+            box-shadow: 0 6px 18px rgba(34,197,94,0.06), 0 0 0 4px rgba(34,197,94,0.06);
+            border-color: color-mix(in srgb, var(--primary) 60%, black 0%);
+        }
+    }
