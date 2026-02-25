@@ -1,7 +1,7 @@
 import { queryParams, type RouteQueryOptions, type RouteDefinition, type RouteFormDefinition, applyUrlDefaults } from './../../../../../wayfinder'
 /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::index
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:22
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:23
  * @route '/admin/payments/manual-requests'
  */
 export const index = (options?: RouteQueryOptions): RouteDefinition<'get'> => ({
@@ -16,7 +16,7 @@ index.definition = {
 
 /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::index
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:22
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:23
  * @route '/admin/payments/manual-requests'
  */
 index.url = (options?: RouteQueryOptions) => {
@@ -25,7 +25,7 @@ index.url = (options?: RouteQueryOptions) => {
 
 /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::index
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:22
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:23
  * @route '/admin/payments/manual-requests'
  */
 index.get = (options?: RouteQueryOptions): RouteDefinition<'get'> => ({
@@ -34,7 +34,7 @@ index.get = (options?: RouteQueryOptions): RouteDefinition<'get'> => ({
 })
 /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::index
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:22
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:23
  * @route '/admin/payments/manual-requests'
  */
 index.head = (options?: RouteQueryOptions): RouteDefinition<'head'> => ({
@@ -44,7 +44,7 @@ index.head = (options?: RouteQueryOptions): RouteDefinition<'head'> => ({
 
     /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::index
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:22
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:23
  * @route '/admin/payments/manual-requests'
  */
     const indexForm = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
@@ -54,7 +54,7 @@ index.head = (options?: RouteQueryOptions): RouteDefinition<'head'> => ({
 
             /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::index
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:22
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:23
  * @route '/admin/payments/manual-requests'
  */
         indexForm.get = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
@@ -63,7 +63,7 @@ index.head = (options?: RouteQueryOptions): RouteDefinition<'head'> => ({
         })
             /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::index
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:22
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:23
  * @route '/admin/payments/manual-requests'
  */
         indexForm.head = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
@@ -79,7 +79,7 @@ index.head = (options?: RouteQueryOptions): RouteDefinition<'head'> => ({
     index.form = indexForm
 /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::exportMethod
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:179
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:199
  * @route '/admin/payments/manual-requests/export'
  */
 export const exportMethod = (options?: RouteQueryOptions): RouteDefinition<'get'> => ({
@@ -94,7 +94,7 @@ exportMethod.definition = {
 
 /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::exportMethod
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:179
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:199
  * @route '/admin/payments/manual-requests/export'
  */
 exportMethod.url = (options?: RouteQueryOptions) => {
@@ -103,7 +103,7 @@ exportMethod.url = (options?: RouteQueryOptions) => {
 
 /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::exportMethod
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:179
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:199
  * @route '/admin/payments/manual-requests/export'
  */
 exportMethod.get = (options?: RouteQueryOptions): RouteDefinition<'get'> => ({
@@ -112,7 +112,7 @@ exportMethod.get = (options?: RouteQueryOptions): RouteDefinition<'get'> => ({
 })
 /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::exportMethod
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:179
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:199
  * @route '/admin/payments/manual-requests/export'
  */
 exportMethod.head = (options?: RouteQueryOptions): RouteDefinition<'head'> => ({
@@ -122,7 +122,7 @@ exportMethod.head = (options?: RouteQueryOptions): RouteDefinition<'head'> => ({
 
     /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::exportMethod
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:179
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:199
  * @route '/admin/payments/manual-requests/export'
  */
     const exportMethodForm = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
@@ -132,7 +132,7 @@ exportMethod.head = (options?: RouteQueryOptions): RouteDefinition<'head'> => ({
 
             /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::exportMethod
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:179
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:199
  * @route '/admin/payments/manual-requests/export'
  */
         exportMethodForm.get = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
@@ -141,7 +141,7 @@ exportMethod.head = (options?: RouteQueryOptions): RouteDefinition<'head'> => ({
         })
             /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::exportMethod
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:179
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:199
  * @route '/admin/payments/manual-requests/export'
  */
         exportMethodForm.head = (options?: RouteQueryOptions): RouteFormDefinition<'get'> => ({
@@ -157,7 +157,7 @@ exportMethod.head = (options?: RouteQueryOptions): RouteDefinition<'head'> => ({
     exportMethod.form = exportMethodForm
 /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::approve
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:112
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:132
  * @route '/admin/payments/{payment}/approve'
  */
 export const approve = (args: { payment: number | { id: number } } | [payment: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'post'> => ({
@@ -172,7 +172,7 @@ approve.definition = {
 
 /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::approve
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:112
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:132
  * @route '/admin/payments/{payment}/approve'
  */
 approve.url = (args: { payment: number | { id: number } } | [payment: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions) => {
@@ -205,7 +205,7 @@ approve.url = (args: { payment: number | { id: number } } | [payment: number | {
 
 /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::approve
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:112
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:132
  * @route '/admin/payments/{payment}/approve'
  */
 approve.post = (args: { payment: number | { id: number } } | [payment: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'post'> => ({
@@ -215,7 +215,7 @@ approve.post = (args: { payment: number | { id: number } } | [payment: number | 
 
     /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::approve
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:112
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:132
  * @route '/admin/payments/{payment}/approve'
  */
     const approveForm = (args: { payment: number | { id: number } } | [payment: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
@@ -225,7 +225,7 @@ approve.post = (args: { payment: number | { id: number } } | [payment: number | 
 
             /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::approve
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:112
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:132
  * @route '/admin/payments/{payment}/approve'
  */
         approveForm.post = (args: { payment: number | { id: number } } | [payment: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
@@ -236,7 +236,7 @@ approve.post = (args: { payment: number | { id: number } } | [payment: number | 
     approve.form = approveForm
 /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::reject
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:153
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:173
  * @route '/admin/payments/{payment}/reject'
  */
 export const reject = (args: { payment: number | { id: number } } | [payment: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'post'> => ({
@@ -251,7 +251,7 @@ reject.definition = {
 
 /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::reject
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:153
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:173
  * @route '/admin/payments/{payment}/reject'
  */
 reject.url = (args: { payment: number | { id: number } } | [payment: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions) => {
@@ -284,7 +284,7 @@ reject.url = (args: { payment: number | { id: number } } | [payment: number | { 
 
 /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::reject
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:153
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:173
  * @route '/admin/payments/{payment}/reject'
  */
 reject.post = (args: { payment: number | { id: number } } | [payment: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteDefinition<'post'> => ({
@@ -294,7 +294,7 @@ reject.post = (args: { payment: number | { id: number } } | [payment: number | {
 
     /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::reject
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:153
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:173
  * @route '/admin/payments/{payment}/reject'
  */
     const rejectForm = (args: { payment: number | { id: number } } | [payment: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
@@ -304,7 +304,7 @@ reject.post = (args: { payment: number | { id: number } } | [payment: number | {
 
             /**
 * @see \App\Http\Controllers\Admin\PaymentApprovalController::reject
- * @see app/Http/Controllers/Admin/PaymentApprovalController.php:153
+ * @see app/Http/Controllers/Admin/PaymentApprovalController.php:173
  * @route '/admin/payments/{payment}/reject'
  */
         rejectForm.post = (args: { payment: number | { id: number } } | [payment: number | { id: number } ] | number | { id: number }, options?: RouteQueryOptions): RouteFormDefinition<'post'> => ({
