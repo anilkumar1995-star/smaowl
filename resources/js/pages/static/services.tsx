@@ -48,7 +48,7 @@ export default function Services({ serviceGroups = [] }: Props) {
                                 {group.services.map((s) => (
                                     <div key={s.service} className="p-4 border rounded">
                                         <div className="font-medium">{s.name}</div>
-                                        <div className="text-sm text-muted-foreground">Rate: ₹{parseFloat(s.rate).toFixed(2)}/100</div>
+                                        <div className="text-sm text-muted-foreground">Rate: ₹{parseFloat(s.rate).toFixed(2)}/1000</div>
                                         <div className="text-sm text-muted-foreground">Min: {s.min} • Max: {s.max}</div>
                                         <div className="mt-3">
                                             <Link href={`/orders/create?service=${encodeURIComponent(s.service)}`} className="inline-block text-sm text-blue-600">Order</Link>

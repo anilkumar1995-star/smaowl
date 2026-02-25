@@ -272,7 +272,7 @@ export default function CreateOrder({ serviceGroups }: CreateOrderProps) {
                                         {subServices && subServices.length > 0 ? (
                                             subServices.map((service) => (
                                                 <SelectItem key={service.service} value={service.service.toString()}>
-                                                    {service.name} - ₹{service.rate}/100
+                                                    {service.name} - ₹{service.rate}/1000
                                                 </SelectItem>
                                             ))
                                         ) : (
