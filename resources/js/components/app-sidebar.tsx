@@ -10,7 +10,7 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { dashboard } from '@/routes';
+import { dashboard, services } from '@/routes';
 import orders from '@/routes/orders';
 import payments from '@/routes/payments';
 import adminPayments from '@/routes/admin/payments';
@@ -31,6 +31,11 @@ const baseNavItems: NavItem[] = [
         title: 'Ledger',
         href: payments.ledger().url,
         icon: CreditCard,
+    },
+    {
+        title: 'Services',
+        href: services().url,
+        icon: Folder,
     },
     {
         title: 'Orders',

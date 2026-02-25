@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Storage;
 
 class PaymentApprovalController extends Controller
 {
@@ -78,6 +79,25 @@ class PaymentApprovalController extends Controller
 
         $requests = $pendingQuery->paginate(20)->appends($request->query());
         $approved = $approvedQuery->paginate(20)->appends($request->query());
+
+        // Add screenshot URL to metadata if present so frontend can use Storage::url consistently
+        $requests->getCollection()->transform(function ($r) {
+            $meta = (array) ($r->metadata ?? []);
+            if (!empty($meta['screenshot'] ?? null)) {
+                $meta['screenshot_url'] = Storage::url($meta['screenshot']);
+            }
+            $r->metadata = $meta;
+            return $r;
+        });
+
+        $approved->getCollection()->transform(function ($r) {
+            $meta = (array) ($r->metadata ?? []);
+            if (!empty($meta['screenshot'] ?? null)) {
+                $meta['screenshot_url'] = Storage::url($meta['screenshot']);
+            }
+            $r->metadata = $meta;
+            return $r;
+        });
 
         // Reports / summaries
         $pendingCount = $pendingQuery->count();

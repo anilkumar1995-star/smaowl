@@ -34,27 +34,32 @@ export function AppSidebarHeader({
             // ignore
         }
     }, [user]);
+    const currentTitle = breadcrumbs?.length ? breadcrumbs[breadcrumbs.length - 1].title : '';
+
     return (
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-sidebar-border/50 px-6 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 md:px-4">
-            <div className="flex items-center gap-2">
+        <header className="flex flex-wrap h-12 sm:h-16 min-w-0 shrink-0 items-center justify-between border-b border-sidebar-border/50 px-3 sm:px-6 md:px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
                 <SidebarTrigger className="-ml-1" />
-                <Breadcrumbs breadcrumbs={breadcrumbs} />
+                <div className="hidden sm:block">
+                    <Breadcrumbs breadcrumbs={breadcrumbs} />
+                </div>
+                <div className="sm:hidden text-sm font-medium truncate min-w-0 overflow-hidden">{currentTitle}</div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0 justify-end">
                 {/* Fund Display - allow wrapping and truncation on small screens */}
-                       <div className="soft-card flex items-center gap-4">
+                <div className="hidden sm:flex soft-card flex items-center gap-3 min-w-0 max-w-xs">
                     <div className="flex items-center gap-2 min-w-0">
                         <Wallet className="w-4 h-4 text-green-600 dark:text-green-400" />
                         <div className="flex flex-col min-w-0">
-                            <span className="text-xs text-muted-foreground font-medium">Available</span>
+                            <span className="text-xs text-muted-foreground font-medium hidden sm:block">Available</span>
                             <span className="text-sm font-bold text-green-600 dark:text-green-400 truncate">{formatCurrency(availableBalance)}</span>
                         </div>
                     </div>
 
-                    <div className="w-px h-6 bg-border hidden sm:block" />
+                    <div className="w-px h-6 bg-border hidden md:block" />
 
-                    {/* Hide invested on small screens to save space */}
-                    <div className="hidden sm:flex items-center gap-2 min-w-0">
+                    {/* Hide invested on small and tablet; only show on md+ */}
+                    <div className="hidden md:flex items-center gap-2 min-w-0">
                         {invested > 0 ? (
                             <div className="w-2 h-2 rounded-full bg-blue-500" />
                         ) : (
@@ -66,22 +71,24 @@ export function AppSidebarHeader({
                         </div>
                     </div>
 
-                    <div className="ml-0 sm:ml-2 mt-2 sm:mt-0 flex-shrink-0">
+                            <div className="ml-0 sm:ml-2 mt-0">
                         <Button
                             size="sm"
                             variant="outline"
                             className="h-7 px-2 bg-white/50 hover:bg-white/80 dark:bg-gray-800/50 dark:hover:bg-gray-800/80 border-green-300 dark:border-green-700"
                             asChild
                         >
-                            <Link href="/payments/add-funds">
+                            <Link href="/payments/add-funds" className="flex items-center">
                                 <Plus className="w-3 h-3 mr-1" />
-                                Add
+                                        <span className="hidden md:inline">Add</span>
                             </Link>
                         </Button>
                     </div>
                 </div>
 
-                <NavUser />
+                        <div className="ml-2 flex-shrink-0">
+                            <NavUser />
+                        </div>
             </div>
         </header>
     );

@@ -133,6 +133,8 @@ export default function AdminManualRequests() {
                                             <th className="text-left p-2">User</th>
                                             <th className="text-left p-2">Amount</th>
                                             <th className="text-left p-2">Note</th>
+                                            <th className="text-left p-2">UTR</th>
+                                            <th className="text-left p-2">Screenshot</th>
                                             <th className="text-left p-2">Status</th>
                                             <th className="text-left p-2">Requested At</th>
                                             <th className="text-left p-2">Actions</th>
@@ -145,6 +147,20 @@ export default function AdminManualRequests() {
                                                 <td className="p-2">{r.user?.email || r.user?.name || '—'}</td>
                                                 <td className="p-2">{formatCurrency(r.amount)}</td>
                                                 <td className="p-2">{r.description}</td>
+                                                <td className="p-2">{r.metadata?.utr ?? '—'}</td>
+                                                <td className="p-2">
+                                                    {r.metadata?.screenshot_url ? (
+                                                        <a href={r.metadata.screenshot_url} target="_blank" rel="noopener noreferrer" className="inline-block">
+                                                            <img src={r.metadata.screenshot_url} alt="screenshot" className="w-16 h-10 object-cover rounded" />
+                                                        </a>
+                                                    ) : r.metadata?.screenshot ? (
+                                                        <a href={`/storage/${r.metadata.screenshot}`} target="_blank" rel="noopener noreferrer" className="inline-block">
+                                                            <img src={`/storage/${r.metadata.screenshot}`} alt="screenshot" className="w-16 h-10 object-cover rounded" />
+                                                        </a>
+                                                    ) : (
+                                                        '—'
+                                                    )}
+                                                </td>
                                                 <td className="p-2">{r.status}</td>
                                                 <td className="p-2">{new Date(r.created_at).toLocaleString()}</td>
                                                 <td className="p-2">
@@ -189,6 +205,8 @@ export default function AdminManualRequests() {
                                             <th className="text-left p-2">User</th>
                                             <th className="text-left p-2">Amount</th>
                                             <th className="text-left p-2">Description</th>
+                                            <th className="text-left p-2">UTR</th>
+                                            <th className="text-left p-2">Screenshot</th>
                                             <th className="text-left p-2">Paid At</th>
                                         </tr>
                                     </thead>
@@ -199,6 +217,14 @@ export default function AdminManualRequests() {
                                                 <td className="p-2">{a.user?.email || a.user?.name || '—'}</td>
                                                 <td className="p-2">{formatCurrency(a.amount)}</td>
                                                 <td className="p-2">{a.description}</td>
+                                                <td className="p-2">{a.metadata?.utr ?? '—'}</td>
+                                                <td className="p-2">
+                                                    {a.metadata?.screenshot ? (
+                                                        <a href={`/storage/${a.metadata.screenshot}`} target="_blank" rel="noopener noreferrer">
+                                                            <img src={`/storage/${a.metadata.screenshot}`} alt="screenshot" className="w-16 h-10 object-cover rounded" />
+                                                        </a>
+                                                    ) : '—'}
+                                                </td>
                                                 <td className="p-2">{new Date(a.paid_at).toLocaleString()}</td>
                                             </tr>
                                         ))}

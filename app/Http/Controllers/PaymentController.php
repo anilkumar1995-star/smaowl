@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use App\Models\Ledger;
 use App\Models\User;
+use Illuminate\Support\Facades\Storage;
 use Razorpay\Api\Api;
 
 class PaymentController extends Controller
@@ -211,9 +212,71 @@ class PaymentController extends Controller
         $request->validate([
             'amount' => 'required|numeric|min:1|max:100000',
             'note' => 'nullable|string|max:500',
+            'utr' => 'nullable|string|max:255',
+            'screenshot' => 'nullable|image|max:2048',
         ]);
 
         $user = Auth::user();
+
+        // Prepare metadata and store screenshot if provided
+        $metadata = ['requested_by' => $user->id, 'manual_request' => true];
+        if ($request->filled('utr')) {
+            $metadata['utr'] = $request->input('utr');
+        }
+
+        if ($request->hasFile('screenshot')) {
+            try {
+                $file = $request->file('screenshot');
+                $contents = file_get_contents($file->getRealPath());
+
+                $img = @imagecreatefromstring($contents);
+                if ($img !== false) {
+                    $width = imagesx($img);
+                    $height = imagesy($img);
+                    $max = 1200; // max width/height
+
+                    if ($width > $max || $height > $max) {
+                        $ratio = min($max / $width, $max / $height);
+                        $newW = (int) round($width * $ratio);
+                        $newH = (int) round($height * $ratio);
+
+                        $dst = imagecreatetruecolor($newW, $newH);
+                        // Preserve transparency for PNG/GIF
+                        imagealphablending($dst, false);
+                        imagesavealpha($dst, true);
+                        imagecopyresampled($dst, $img, 0, 0, 0, 0, $newW, $newH, $width, $height);
+
+                        // Save to temp stream
+                        ob_start();
+                        // Try PNG if original supports alpha, else JPEG
+                        $mime = $file->getClientMimeType();
+                        if (in_array($mime, ['image/png', 'image/x-png'])) {
+                            imagepng($dst);
+                        } else {
+                            imagejpeg($dst, null, 85);
+                        }
+                        $data = ob_get_clean();
+                        imagedestroy($dst);
+                    } else {
+                        // No resize needed
+                        $data = $contents;
+                    }
+
+                    // Generate filename and store
+                    $filename = 'manual_screenshots/' . uniqid() . '.' . ($file->extension() ?: 'jpg');
+                    Storage::disk('public')->put($filename, $data);
+                    $metadata['screenshot'] = $filename;
+                    imagedestroy($img);
+                } else {
+                    // fallback to direct store
+                    $path = $file->store('manual_screenshots', 'public');
+                    $metadata['screenshot'] = $path;
+                }
+            } catch (\Exception $e) {
+                // Log but don't fail the whole request
+                \Log::warning('Screenshot upload failed: ' . $e->getMessage());
+            }
+        }
 
         // Use 'pending' status (the system treats manual requests as pending with metadata)
         $payment = Payment::create([
@@ -222,7 +285,7 @@ class PaymentController extends Controller
             'currency' => 'INR',
             'status' => 'pending',
             'description' => $request->note ?? 'Manual wallet load request',
-            'metadata' => ['requested_by' => $user->id, 'manual_request' => true],
+            'metadata' => $metadata,
         ]);
 
         return response()->json(['success' => true, 'payment_id' => $payment->id]);
