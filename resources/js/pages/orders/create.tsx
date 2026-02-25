@@ -148,7 +148,7 @@ export default function CreateOrder({ serviceGroups }: CreateOrderProps) {
         if (!selectedService || !data.quantity) return 0;
         const quantity = parseInt(data.quantity);
         const rate = parseFloat(selectedService.rate);
-        return (rate * quantity) / 100; // Assuming rate is per 100
+        return (rate * quantity) / 1000; // Assuming rate is per 100
     };
 
     const formRef = useRef<HTMLFormElement | null>(null);
